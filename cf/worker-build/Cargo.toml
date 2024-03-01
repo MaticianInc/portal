@@ -12,10 +12,11 @@ description = "This is a tool to be used as a custom build command for a Cloudfl
 
 [dependencies]
 anyhow = "1.0.71"
+clap = { version = "4.5.1", features = ["derive"] }
 dirs-next = "2.0.0"
 flate2 = "1.0.26"
 tar = "0.4.38"
 ureq = { version = "2.6.2", features = ["tls", "gzip"] }
 
 [dev-dependencies]
-wasm-bindgen-cli-support.workspace = true
+wasm-bindgen-cli-support = "0.2.91"
