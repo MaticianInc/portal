@@ -1,0 +1,17 @@
+[package]
+name = "jwt-webcrypto"
+authors = ["Eric Seppanen <eric@matician.com>"]
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+base64 = { version = "0.21.7", default-features = false, features = ["alloc"] }
+js-sys = "0.3.67"
+serde = { version = "1.0.195", features = ["derive"] }
+serde_json = "1.0.111"
+wasm-bindgen-futures = "0.4.40"
+web-sys = { version = "0.3.67", features = ["Crypto", "CryptoKey", "SubtleCrypto", "HmacImportParams", "EcKeyImportParams", "EcdsaParams", "Window", "console"] }
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3.40"
+pem = { version = "3.0.3", default-features = false }
