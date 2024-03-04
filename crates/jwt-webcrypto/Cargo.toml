@@ -3,6 +3,7 @@ name = "jwt-webcrypto"
 authors = ["Eric Seppanen <eric@matician.com>"]
 version = "0.1.0"
 edition = "2021"
+license = "Apache-2.0"
 
 [dependencies]
 base64 = { version = "0.21.7", default-features = false, features = ["alloc"] }
