@@ -4,24 +4,39 @@ rust-version = "1.69.0"
 [workspace]
 resolver = "2"
 members = [
-    "portal-router",
     "jwt-webcrypto",
+    "portal-client",
+    "portal-router",
+    "demo-router",
 ]
 
 [workspace.dependencies]
+anyhow = "1.0.80"
 async-trait = "0.1.77"
+axum = { version = "0.7.4", features = ["ws"] }
 base64 = { version = "0.21.7", default-features = false, features = ["alloc"] }
+clap = { version = "4.5.2", features = ["derive"] }
 console_error_panic_hook = { version = "0.1.7" }
+dashmap = "5.5.3"
 futures = "0.3.30"
+futures-util = { version = "0.3.30", default-features = false }
 js-sys = "0.3.67"
 pem = { version = "3.0.3", default-features = false }
+pin-project = "1.1.5"
 serde = { version = "1.0.195", features = ["derive"] }
 serde_json = "1.0.111"
-worker = { git = "https://github.com/eric-seppanen/workers-rs.git", branch = "local" }
-worker-sys = { git = "https://github.com/eric-seppanen/workers-rs.git", branch = "local" }
+thiserror = "1.0.57"
+tracing = "0.1.40"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+tokio = { version = "1.36.0", features = ["macros", "net", "rt-multi-thread", "io-std", "sync"] }
+tokio-stream = "0.1.14"
+tokio-tungstenite = "0.21.0"
+url = "2.5.0"
 wasm-bindgen = "0.2.86"
 wasm-bindgen-futures = "0.4.40"
 wasm-bindgen-test = "0.3.40"
 web-sys = { version = "0.3.67", features = ["Crypto", "CryptoKey", "SubtleCrypto", "HmacImportParams", "EcKeyImportParams", "EcdsaParams", "Window", "console"] }
+worker = { git = "https://github.com/eric-seppanen/workers-rs.git", branch = "local" }
+worker-sys = { git = "https://github.com/eric-seppanen/workers-rs.git", branch = "local" }
 
 jwt-webcrypto = { path = "jwt-webcrypto" }
