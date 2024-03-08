@@ -40,7 +40,7 @@ impl DurableObject for DurableRouter {
         }
     }
 
-    async fn websocket_message(&mut self, ws: WebSocket, message: WebSocketIncomingMessage) {
+    async fn websocket_message(&mut self, ws: WebSocket, message: WebSocketIncomingMessage) -> worker::Result<()> {
         let tags = self.state.get_tags(&ws);
         console_log!("incoming message from ws with tags {tags:?}");
 
@@ -48,15 +48,16 @@ impl DurableObject for DurableRouter {
         for tag in tags {
             if tag == "h" {
                 self.message_from_host(message);
-                return;
+                break;
             } else if let Some(conn_num) = tag.strip_prefix("cs ") {
                 if let Ok(conn_num) = conn_num.parse::<u32>() {
                     self.message_from_client(message, conn_num);
-                    return;
+                    break;
                 }
             }
             console_log!("unrecognized tag {tag}");
         }
+        Ok(())
     }
 }
 
@@ -80,7 +81,7 @@ impl DurableRouter {
         let host_ws = pair.client;
         let server_ws = pair.server;
 
-        self.state.accept_websocket(&server_ws, &["h"]);
+        self.state.accept_websocket_with_tags(&server_ws, &["h"]);
 
         server_ws
             .send_with_str("hello host from cf-worker")
@@ -96,7 +97,7 @@ impl DurableRouter {
     /// and this client.
     async fn handle_client(&mut self, _id: TunnelId) -> worker::Result<Response> {
         // We should only allow this connection if the server has already connected.
-        let host_socket = self.state.get_websockets(Some(&format!("h")));
+        let host_socket = self.state.get_websockets_with_tag("h");
         if host_socket.is_empty() {
             console_log!("no host socket found");
             return Response::error("tunnel host not available", 503);
@@ -107,7 +108,7 @@ impl DurableRouter {
         let server_ws = pair.server;
         let conn_id = crate::random_channel();
         let client_tag = format!("cs {conn_id}");
-        self.state.accept_websocket(&server_ws, &[&client_tag]);
+        self.state.accept_websocket_with_tags(&server_ws, &[&client_tag]);
         server_ws
             .send_with_str(format!("hello client {conn_id} from cf-worker"))
             .unwrap();
@@ -131,7 +132,7 @@ impl DurableRouter {
                 let conn_num_bytes = msg.split_off(conn_num_offset);
                 let conn_num = u32::from_be_bytes(conn_num_bytes.try_into().unwrap());
                 let client_tag = format!("cs {conn_num}");
-                let mut client_sockets = self.state.get_websockets(Some(&client_tag));
+                let mut client_sockets = self.state.get_websockets_with_tag(&client_tag);
                 // FIXME: decide what to do if >1 matching client sockets are found.
                 let Some(client_socket) = client_sockets.pop() else {
                     console_log!("no host socket found");
@@ -154,7 +155,7 @@ impl DurableRouter {
                 // tack the connection number on the end.
                 msg.extend_from_slice(&conn_num.to_be_bytes());
                 // send the encoded message to the host.
-                let mut host_sockets = self.state.get_websockets(Some("h"));
+                let mut host_sockets = self.state.get_websockets_with_tag("h");
                 // FIXME: decide what to do if >1 host sockets are found.
                 let Some(host_socket) = host_sockets.pop() else {
                     console_log!("no host socket found");

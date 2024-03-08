@@ -39,10 +39,6 @@ impl TokenValidator {
     }
 
     pub async fn validate_token(&self, token: &str) -> Result<Claims, ValidationError> {
-        // let usages = js_sys::Array::new();
-        // let params = web_sys::EcKeyGenParams::new("ECDSA", "P-256");
-        // let _key = subtle.generate_key_with_object(&params, true, &usages).expect("failed to generate key");
-
         let payload = self
             .validator
             .validate(token)

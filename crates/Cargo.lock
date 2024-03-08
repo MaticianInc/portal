@@ -114,7 +114,7 @@ dependencies = [
  "hyper",
  "hyper-util",
  "itoa",
- "matchit 0.7.3",
+ "matchit",
  "memchr",
  "mime",
  "percent-encoding",
@@ -714,12 +714,6 @@ checksum = "8263075bb86c5a1b1427b5ae862e8889656f126e9f77c484496e8b47cf5c5558"
 dependencies = [
  "regex-automata 0.1.10",
 ]
-
-[[package]]
-name = "matchit"
-version = "0.4.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9376a4f0340565ad675d11fc1419227faf5f60cd7ac9cb2e7185a471f30af833"
 
 [[package]]
 name = "matchit"
@@ -1794,8 +1788,8 @@ checksum = "32b752e52a2da0ddfbdbcc6fceadfeede4c939ed16d13e648833a61dfb611ed8"
 
 [[package]]
 name = "worker"
-version = "0.0.18"
-source = "git+https://github.com/eric-seppanen/workers-rs.git?branch=local#6806e7a4ccb2331b72e1144e4ecfa3bd6c65193a"
+version = "0.0.20"
+source = "git+https://github.com/eric-seppanen/workers-rs.git?branch=local2#78e9c524e2456d0277cb7a8f91ff50a2287637c9"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1804,7 +1798,7 @@ dependencies = [
  "futures-util",
  "http",
  "js-sys",
- "matchit 0.4.6",
+ "matchit",
  "pin-project",
  "serde",
  "serde-wasm-bindgen 0.6.5",
@@ -1838,8 +1832,8 @@ dependencies = [
 
 [[package]]
 name = "worker-macros"
-version = "0.0.10"
-source = "git+https://github.com/eric-seppanen/workers-rs.git?branch=local#6806e7a4ccb2331b72e1144e4ecfa3bd6c65193a"
+version = "0.0.12"
+source = "git+https://github.com/eric-seppanen/workers-rs.git?branch=local2#78e9c524e2456d0277cb7a8f91ff50a2287637c9"
 dependencies = [
  "async-trait",
  "proc-macro2",
@@ -1853,8 +1847,8 @@ dependencies = [
 
 [[package]]
 name = "worker-sys"
-version = "0.0.10"
-source = "git+https://github.com/eric-seppanen/workers-rs.git?branch=local#6806e7a4ccb2331b72e1144e4ecfa3bd6c65193a"
+version = "0.0.12"
+source = "git+https://github.com/eric-seppanen/workers-rs.git?branch=local2#78e9c524e2456d0277cb7a8f91ff50a2287637c9"
 dependencies = [
  "cfg-if",
  "js-sys",

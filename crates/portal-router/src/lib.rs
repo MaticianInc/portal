@@ -14,8 +14,8 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> worker::Resu
 
     let router = Router::new();
     router
-        .get_async("/echo_host/:id", tunnel_host)
-        .get_async("/echo_client/:id", tunnel_client)
+        .get_async("/connect/host/:id", tunnel_host)
+        .get_async("/connect/client/:id", tunnel_client)
         .run(req, env)
         .await
 }
@@ -48,7 +48,6 @@ impl Error {
 /// Returns the id of the tunnel.
 async fn check_authorization(req: &Request, expected_role: Role) -> Result<Claims, Error> {
     if let Some(token) = get_auth_header(req.headers()) {
-        console_log!("XXX auth token: {token}");
         let validator = TokenValidator::new("s33kr1t".as_bytes()).await;
         if let Ok(claims) = validator.validate_token(&token).await {
             console_log!("got signed token with claims: {claims:?}");
