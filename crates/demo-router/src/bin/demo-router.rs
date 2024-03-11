@@ -8,7 +8,7 @@ use axum::Extension;
 use axum::{routing::get, Router};
 use dashmap::DashMap;
 use demo_router::auth::{Auth, JwtClaims, Role};
-use demo_router::tunnelid::TunnelId;
+use demo_router::tunnelid::PortalId;
 use futures_util::StreamExt;
 
 use demo_router::monitor::IdleWebSocket;
@@ -16,12 +16,12 @@ use demo_router::monitor::IdleWebSocket;
 /// This only contains host tunnels that are waiting for a client.
 #[derive(Default)]
 struct WaitingTunnels {
-    tunnels: DashMap<TunnelId, IdleWebSocket>,
+    tunnels: DashMap<PortalId, IdleWebSocket>,
 }
 
-async fn insert_host_ws(state: Arc<WaitingTunnels>, tunnel_id: TunnelId, ws: WebSocket) {
-    let idle_websocket = IdleWebSocket::new(ws, tunnel_id.to_string());
-    let previous = state.tunnels.insert(tunnel_id, idle_websocket);
+async fn insert_host_ws(state: Arc<WaitingTunnels>, portal_id: PortalId, ws: WebSocket) {
+    let idle_websocket = IdleWebSocket::new(ws, portal_id.to_string());
+    let previous = state.tunnels.insert(portal_id, idle_websocket);
     if previous.is_some() {
         tracing::debug!("displaced a connected host");
     }
@@ -57,65 +57,65 @@ async fn main() {
 
 async fn connect_host(
     State(state): State<Arc<WaitingTunnels>>,
-    Path(tunnel_id): Path<TunnelId>,
+    Path(portal_id): Path<PortalId>,
     auth_claims: JwtClaims,
     ws: WebSocketUpgrade,
 ) -> impl IntoResponse {
-    if let Err(status_code) = auth_claims.check(Role::Host, tunnel_id) {
+    if let Err(status_code) = auth_claims.check(Role::Host, portal_id) {
         return status_code.into_response();
     }
 
-    tracing::debug!("connect_host {tunnel_id}");
+    tracing::debug!("connect_host {portal_id}");
     // Note this runs tokio::spawn on handle_socket
-    ws.on_upgrade(move |ws| insert_host_ws(state, tunnel_id, ws))
+    ws.on_upgrade(move |ws| insert_host_ws(state, portal_id, ws))
         .into_response()
 }
 
 async fn connect_client(
     State(state): State<Arc<WaitingTunnels>>,
-    Path(tunnel_id): Path<TunnelId>,
+    Path(portal_id): Path<PortalId>,
     auth_claims: JwtClaims,
     ws: WebSocketUpgrade,
 ) -> impl IntoResponse {
-    if let Err(status_code) = auth_claims.check(Role::Client, tunnel_id) {
+    if let Err(status_code) = auth_claims.check(Role::Client, portal_id) {
         return status_code.into_response();
     }
 
-    tracing::debug!("connect_client {} {tunnel_id}", auth_claims.sub);
+    tracing::debug!("connect_client {} {portal_id}", auth_claims.sub);
 
     // Find out if the desired host exists
-    let Some((_, idle_websocket)) = state.tunnels.remove(&tunnel_id) else {
-        tracing::info!("failed to find tunnel {tunnel_id}");
+    let Some((_, idle_websocket)) = state.tunnels.remove(&portal_id) else {
+        tracing::info!("failed to find tunnel {portal_id}");
         return StatusCode::NOT_FOUND.into_response();
     };
 
     let Ok(host_ws) = idle_websocket.takeover().await else {
-        tracing::debug!("tunnel {tunnel_id} is dead");
+        tracing::debug!("tunnel {portal_id} is dead");
         return StatusCode::NOT_FOUND.into_response();
     };
 
-    tracing::info!("connecting to tunnel {tunnel_id}");
+    tracing::info!("connecting to tunnel {portal_id}");
 
     // // Send a text message to the host with the identity of the client.
-    // let hello_message = format!("connection to tunnel {tunnel_id} from {}", client_name);
+    // let hello_message = format!("connection to tunnel {portal_id} from {}", client_name);
     // if let Err(e) = host_ws
     //     .send(axum::extract::ws::Message::Text(hello_message))
     //     .await
     // {
-    //     tracing::error!("failed to send hello message to {tunnel_id}: {e}");
+    //     tracing::error!("failed to send hello message to {portal_id}: {e}");
     //     return StatusCode::BAD_GATEWAY.into_response();
     // }
 
     // Note this runs tokio::spawn to move the websocket handler into the background.
-    ws.on_upgrade(move |socket| handle_client_websocket(socket, host_ws, tunnel_id))
+    ws.on_upgrade(move |socket| handle_client_websocket(socket, host_ws, portal_id))
         .into_response()
 }
 
-async fn handle_client_websocket(client_ws: WebSocket, host_ws: WebSocket, tunnel_id: TunnelId) {
+async fn handle_client_websocket(client_ws: WebSocket, host_ws: WebSocket, portal_id: PortalId) {
     let (client_sender, client_receiver) = client_ws.split();
     let (host_sender, host_receiver) = host_ws.split();
 
-    tracing::debug!("starting traffic forwarding {tunnel_id}");
+    tracing::debug!("starting traffic forwarding {portal_id}");
 
     // Race the two async data-forwarding tasks. If either one exits, cancel the other and exit.
     // Cancel-safety is not an issue here, because we aren't looping: each of these futures runs
@@ -124,5 +124,5 @@ async fn handle_client_websocket(client_ws: WebSocket, host_ws: WebSocket, tunne
         _ = host_receiver.forward(client_sender) => (),
         _ = client_receiver.forward(host_sender) => (),
     );
-    tracing::info!("ending tunnel {tunnel_id}");
+    tracing::info!("ending tunnel {portal_id}");
 }

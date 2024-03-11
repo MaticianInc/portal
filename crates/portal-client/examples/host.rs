@@ -14,7 +14,7 @@ struct Arguments {
 
     /// The tunnel identifier
     #[arg(long, default_value = "1234")]
-    tunnel_id: u64,
+    portal_id: u64,
 
     /// Tunnel service auth token
     #[arg(long)]
@@ -27,7 +27,7 @@ async fn run_host(args: &Arguments) -> anyhow::Result<()> {
     let mut tunnel = service
         .tunnel_host(
             args.auth_token.as_deref().unwrap_or_default(),
-            &args.tunnel_id.to_string(),
+            &args.portal_id.to_string(),
         )
         .await
         .context("failed to connect to server")?;

@@ -15,7 +15,7 @@ struct Arguments {
 
     /// The tunnel identifier
     #[arg(long)]
-    tunnel_id: u64,
+    portal_id: u64,
 
     /// Tunnel service auth token
     #[arg(long)]
@@ -50,7 +50,7 @@ fn make_token(args: &Arguments) -> Option<String> {
         sub: args.subject.clone(),
         exp: make_expiration(lifetime),
         role: args.role,
-        tunnel_id: args.tunnel_id.into(),
+        portal_id: args.portal_id.into(),
     };
 
     let encoding_key = EncodingKey::from_secret(args.secret.as_bytes());

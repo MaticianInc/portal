@@ -3,13 +3,13 @@ use worker::{
     WebSocketIncomingMessage, WebSocketPair,
 };
 
-use crate::tunnel_id::TunnelId;
+use crate::portal_id::PortalId;
 
 /// An enum describing the routes that the DurableRouter can handle
 #[derive(Debug)]
 enum ServiceRoute {
-    Host(TunnelId),
-    Client(TunnelId),
+    Host(PortalId),
+    Client(PortalId),
 }
 
 #[durable_object]
@@ -76,7 +76,7 @@ impl DurableRouter {
     ///
     /// We will store a new host websocket, and return its peer.
     /// Nothing more will happen until a client connects.
-    async fn handle_host(&mut self, _id: TunnelId) -> worker::Result<Response> {
+    async fn handle_host(&mut self, _id: PortalId) -> worker::Result<Response> {
         let pair = WebSocketPair::new()?;
         let host_ws = pair.client;
         let server_ws = pair.server;
@@ -95,7 +95,7 @@ impl DurableRouter {
     /// If the `DurableRouter` is healthy, we will generate a new websocket
     /// for this client, and move messages back and forth between the host
     /// and this client.
-    async fn handle_client(&mut self, _id: TunnelId) -> worker::Result<Response> {
+    async fn handle_client(&mut self, _id: PortalId) -> worker::Result<Response> {
         // We should only allow this connection if the server has already connected.
         let host_socket = self.state.get_websockets_with_tag("h");
         if host_socket.is_empty() {

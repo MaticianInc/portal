@@ -1,7 +1,7 @@
 use jwt_webcrypto::{Algorithm, Validator};
 use serde::Deserialize;
 
-use crate::tunnel_id::TunnelId;
+use crate::portal_id::PortalId;
 
 #[derive(Debug, Clone, Copy)]
 pub struct ValidationError;
@@ -22,7 +22,7 @@ pub struct Claims {
     /// Role: whether the token holder is a tunnel host or client.
     pub role: Role,
     /// The id of the tunnel that the holder is allowed to access.
-    pub tunnel_id: TunnelId,
+    pub portal_id: PortalId,
 }
 
 pub struct TokenValidator {

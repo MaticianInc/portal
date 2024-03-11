@@ -10,7 +10,7 @@ use axum_extra::TypedHeader;
 use jsonwebtoken::{DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
 
-use crate::tunnelid::TunnelId;
+use crate::tunnelid::PortalId;
 
 // pub struct Capability {
 //     role: Role,
@@ -43,19 +43,19 @@ pub struct JwtClaims {
     pub exp: usize,
     /// Role: whether the token holder is a tunnel host or client.
     pub role: Role,
-    /// The id of the tunnel that the holder is allowed to access.
-    pub tunnel_id: TunnelId,
+    /// The id of the portal that the holder is allowed to access.
+    pub portal_id: PortalId,
 }
 
 impl JwtClaims {
-    pub fn check(&self, role: Role, tunnel_id: TunnelId) -> Result<(), StatusCode> {
+    pub fn check(&self, role: Role, portal_id: PortalId) -> Result<(), StatusCode> {
         if self.role != role {
             tracing::error!("{} does not have role {:?}", self.sub, role);
             return Err(StatusCode::UNAUTHORIZED);
         }
-        if self.tunnel_id != tunnel_id {
+        if self.portal_id != portal_id {
             tracing::error!(
-                "client {} does not have permission to access tunnel {tunnel_id}",
+                "client {} does not have permission to access tunnel {portal_id}",
                 self.sub
             );
             return Err(StatusCode::UNAUTHORIZED);

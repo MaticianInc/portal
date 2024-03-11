@@ -1,12 +1,12 @@
 use token::Claims;
-use tunnel_id::TunnelId;
+use portal_id::PortalId;
 use worker::{console_log, event, Env, Headers, Request, Response, RouteContext, Router};
 
 use crate::token::{Role, TokenValidator};
 
 mod durable;
 mod token;
-mod tunnel_id;
+mod portal_id;
 
 #[event(fetch)]
 pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> worker::Result<Response> {
@@ -59,9 +59,9 @@ async fn check_authorization(req: &Request, expected_role: Role) -> Result<Claim
     return Err(Error::Unauthorized);
 }
 
-fn get_tunnel_id(ctx: &RouteContext<()>) -> Option<TunnelId> {
+fn get_tunnel_id(ctx: &RouteContext<()>) -> Option<PortalId> {
     let id = ctx.param("id")?;
-    id.parse::<TunnelId>().ok()
+    id.parse::<PortalId>().ok()
 }
 
 /// Handle incoming connection by tunnel host.
@@ -76,7 +76,7 @@ async fn tunnel_host(req: Request, ctx: RouteContext<()>) -> worker::Result<Resp
     let Some(id) = get_tunnel_id(&ctx) else {
         return Error::MalformedRequest.into_response();
     };
-    if claims.tunnel_id != id {
+    if claims.portal_id != id {
         console_log!("host {} incorrect id", claims.sub);
         return Error::Unauthorized.into_response();
     }

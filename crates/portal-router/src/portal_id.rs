@@ -6,9 +6,9 @@ use serde::Deserialize;
 /// An ID used to identify a websocket tunnel.
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
 #[serde(transparent)]
-pub struct TunnelId(u64);
+pub struct PortalId(u64);
 
-impl FromStr for TunnelId {
+impl FromStr for PortalId {
     type Err = InvalidId;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -18,7 +18,7 @@ impl FromStr for TunnelId {
 }
 
 // This is used to generate a Durable Object Id.
-impl Display for TunnelId {
+impl Display for PortalId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // Use the inner id in decimal format.
         self.0.fmt(f)
