@@ -1,36 +1,17 @@
-use std::fmt::Display;
-use std::str::FromStr;
 use std::sync::Arc;
 
 use axum::extract::ws::WebSocket;
 use axum::extract::{Path, State, WebSocketUpgrade};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
+use axum::Extension;
 use axum::{routing::get, Router};
 use dashmap::DashMap;
+use demo_router::auth::{Auth, JwtClaims, Role};
+use demo_router::tunnelid::TunnelId;
 use futures_util::StreamExt;
-use serde::{Deserialize, Serialize};
 
 use demo_router::monitor::IdleWebSocket;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(transparent)]
-struct TunnelId(u64);
-
-impl FromStr for TunnelId {
-    type Err = std::num::ParseIntError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(TunnelId(s.parse()?))
-    }
-}
-
-// The display impl just prints the inner integer.
-impl Display for TunnelId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.fmt(f)
-    }
-}
 
 /// This only contains host tunnels that are waiting for a client.
 #[derive(Default)]
@@ -55,10 +36,17 @@ async fn main() {
 
     let state = Arc::new(WaitingTunnels::default());
 
+    let Ok(auth_secret) = std::env::var("AUTH_SECRET") else {
+        println!("Authentication secret missing. Please set AUTH_SECRET");
+        return;
+    };
+    let auth = Arc::new(Auth::new(&auth_secret));
+
     // build our application with a route
     let app = Router::new()
         .route("/connect/host/:id", get(connect_host))
         .route("/connect/client/:id", get(connect_client))
+        .layer(Extension(auth))
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3000")
@@ -70,8 +58,13 @@ async fn main() {
 async fn connect_host(
     State(state): State<Arc<WaitingTunnels>>,
     Path(tunnel_id): Path<TunnelId>,
+    auth_claims: JwtClaims,
     ws: WebSocketUpgrade,
 ) -> impl IntoResponse {
+    if let Err(status_code) = auth_claims.check(Role::Host, tunnel_id) {
+        return status_code.into_response();
+    }
+
     tracing::debug!("connect_host {tunnel_id}");
     // Note this runs tokio::spawn on handle_socket
     ws.on_upgrade(move |ws| insert_host_ws(state, tunnel_id, ws))
@@ -81,9 +74,14 @@ async fn connect_host(
 async fn connect_client(
     State(state): State<Arc<WaitingTunnels>>,
     Path(tunnel_id): Path<TunnelId>,
+    auth_claims: JwtClaims,
     ws: WebSocketUpgrade,
 ) -> impl IntoResponse {
-    tracing::debug!("connect_client {tunnel_id}");
+    if let Err(status_code) = auth_claims.check(Role::Client, tunnel_id) {
+        return status_code.into_response();
+    }
+
+    tracing::debug!("connect_client {} {tunnel_id}", auth_claims.sub);
 
     // Find out if the desired host exists
     let Some((_, idle_websocket)) = state.tunnels.remove(&tunnel_id) else {

@@ -9,8 +9,9 @@ pub struct ValidationError;
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Role {
-    /// The token holder will act as a
+    /// The token holder will act as a tunnel host.
     Host,
+    /// The token holder will act as a tunnel client.
     Client,
 }
 

@@ -67,7 +67,7 @@ async fn main() {
 
     // Allow the auth token to be passed in an environment variable.
     if args.auth_token.is_none() {
-        if let Some(env_token) = option_env!("TUNNEL_TOKEN") {
+        if let Some(env_token) = option_env!("PORTAL_TOKEN") {
             args.auth_token = Some(env_token.to_owned());
         }
     }

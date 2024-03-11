@@ -5,8 +5,11 @@ edition = "2021"
 rust-version.workspace = true
 
 [dependencies]
+async-trait.workspace = true
 axum.workspace = true
+axum-extra.workspace = true
 dashmap.workspace = true
+jsonwebtoken.workspace = true
 serde.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
@@ -14,3 +17,6 @@ tokio.workspace = true
 tokio-tungstenite.workspace = true
 tokio-stream.workspace = true
 futures-util.workspace = true
+
+[dev-dependencies]
+clap.workspace = true
