@@ -10,7 +10,7 @@ use axum_extra::TypedHeader;
 use jsonwebtoken::{DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
 
-use crate::tunnelid::PortalId;
+use crate::portal_id::PortalId;
 
 // pub struct Capability {
 //     role: Role,

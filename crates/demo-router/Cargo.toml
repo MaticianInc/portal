@@ -11,6 +11,7 @@ axum-extra.workspace = true
 dashmap.workspace = true
 jsonwebtoken.workspace = true
 serde.workspace = true
+thiserror.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 tokio.workspace = true

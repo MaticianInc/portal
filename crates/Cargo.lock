@@ -382,6 +382,7 @@ dependencies = [
  "futures-util",
  "jsonwebtoken",
  "serde",
+ "thiserror",
  "tokio",
  "tokio-stream",
  "tokio-tungstenite",
@@ -1041,6 +1042,7 @@ dependencies = [
  "jwt-webcrypto",
  "serde",
  "serde_json",
+ "thiserror",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -1968,7 +1970,7 @@ checksum = "32b752e52a2da0ddfbdbcc6fceadfeede4c939ed16d13e648833a61dfb611ed8"
 [[package]]
 name = "worker"
 version = "0.0.20"
-source = "git+https://github.com/eric-seppanen/workers-rs.git?branch=local2#78e9c524e2456d0277cb7a8f91ff50a2287637c9"
+source = "git+https://github.com/eric-seppanen/workers-rs.git?branch=local2#e6f021c35be6fbc7e502a23d4d6e56c91b005e8b"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2012,7 +2014,7 @@ dependencies = [
 [[package]]
 name = "worker-macros"
 version = "0.0.12"
-source = "git+https://github.com/eric-seppanen/workers-rs.git?branch=local2#78e9c524e2456d0277cb7a8f91ff50a2287637c9"
+source = "git+https://github.com/eric-seppanen/workers-rs.git?branch=local2#e6f021c35be6fbc7e502a23d4d6e56c91b005e8b"
 dependencies = [
  "async-trait",
  "proc-macro2",
@@ -2027,7 +2029,7 @@ dependencies = [
 [[package]]
 name = "worker-sys"
 version = "0.0.12"
-source = "git+https://github.com/eric-seppanen/workers-rs.git?branch=local2#78e9c524e2456d0277cb7a8f91ff50a2287637c9"
+source = "git+https://github.com/eric-seppanen/workers-rs.git?branch=local2#e6f021c35be6fbc7e502a23d4d6e56c91b005e8b"
 dependencies = [
  "cfg-if",
  "js-sys",

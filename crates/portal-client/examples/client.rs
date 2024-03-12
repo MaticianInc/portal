@@ -13,9 +13,13 @@ struct Arguments {
     #[arg(long, default_value = "ws://localhost:3000")]
     server: String,
 
-    /// The tunnel identifier
+    /// The portal identifier
     #[arg(long, default_value = "1234")]
     portal_id: u64,
+
+    /// The service name
+    #[arg(long, default_value = "echo")]
+    service: String,
 
     /// Tunnel service auth token
     #[arg(long)]
@@ -26,9 +30,10 @@ async fn run_client(args: &Arguments) -> anyhow::Result<()> {
     tracing::info!("running echo client");
     let service = PortalService::new(&args.server)?;
     let mut tunnel = service
-        .tunnel_host(
+        .tunnel_client(
             args.auth_token.as_deref().unwrap_or_default(),
-            &args.portal_id.to_string(),
+            args.portal_id,
+            &args.service,
         )
         .await
         .context("failed to connect to service")?;
@@ -52,7 +57,10 @@ async fn run_client(args: &Arguments) -> anyhow::Result<()> {
             },
             stdin_result = stdin_lines.next_line() => {
                 match stdin_result {
-                    Ok(Some(text)) => tunnel.send(text.into()).await.unwrap(),
+                    Ok(Some(text)) => {
+                        let message = text.into();
+                        // FIXME: use tunnel.feed() instead? See SinkExt documentation.
+                        tunnel.send(message).await.unwrap()},
                     _ => bail!("stdin closed"),
                 }
 

@@ -15,6 +15,9 @@ struct Arguments {
     /// Mode to operate in
     #[command(subcommand)]
     mode: ForwardingMode,
+
+    #[clap(flatten)]
+    portal_params: PortalParams,
 }
 
 #[derive(Debug, Subcommand)]
@@ -23,6 +26,21 @@ enum ForwardingMode {
     Host(HostParams),
     /// Connect to a forwarded port
     Client(ClientParams),
+}
+
+#[derive(Debug, Parser)]
+struct PortalParams {
+    /// Tunnel service auth token
+    #[arg(long)]
+    auth_token: Option<String>,
+
+    /// The portal identifier
+    #[arg(long, default_value = "1234")]
+    portal_id: u64,
+
+    /// The service name
+    #[arg(long, default_value = "")]
+    service: String,
 }
 
 #[derive(Debug, Parser)]
@@ -47,7 +65,14 @@ struct ClientParams {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let args = Arguments::parse();
+    let mut args = Arguments::parse();
+
+    // Allow the auth token to be passed in an environment variable.
+    if args.portal_params.auth_token.is_none() {
+        if let Some(env_token) = option_env!("PORTAL_TOKEN") {
+            args.portal_params.auth_token = Some(env_token.to_owned());
+        }
+    }
 
     tracing_subscriber::fmt::fmt()
         .with_env_filter(EnvFilter::from_default_env())
@@ -57,19 +82,28 @@ async fn main() -> anyhow::Result<()> {
     let service = PortalService::new(&args.server)?;
 
     match args.mode {
-        ForwardingMode::Host(host_params) => forwarding_host(service, host_params).await?,
-        ForwardingMode::Client(client_params) => run_client(service, client_params).await?,
+        ForwardingMode::Host(host_params) => {
+            forwarding_host(service, args.portal_params, host_params).await?
+        }
+        ForwardingMode::Client(client_params) => {
+            run_client(service, args.portal_params, client_params).await?
+        }
     }
 
     Ok(())
 }
 
-async fn forwarding_host(service: PortalService, params: HostParams) -> anyhow::Result<()> {
+async fn forwarding_host(
+    service: PortalService,
+    portal_params: PortalParams,
+    params: HostParams,
+) -> anyhow::Result<()> {
     let host_port = format!("{}:{}", params.target_host, params.target_port);
     tracing::info!("running forwarding host (target: {})", host_port);
 
+    let auth_token = portal_params.auth_token.as_deref().unwrap_or_default();
     let mut tunnel = service
-        .tunnel_host("mytoken", "1234")
+        .tunnel_host(auth_token, portal_params.portal_id, &portal_params.service)
         .await
         .context("failed to connect to tunnel server")?;
 
@@ -102,7 +136,11 @@ async fn forwarding_host(service: PortalService, params: HostParams) -> anyhow::
 }
 
 /// Wait for an incoming connection, then initiate a tunnel and forward data.
-async fn run_client(service: PortalService, params: ClientParams) -> anyhow::Result<()> {
+async fn run_client(
+    service: PortalService,
+    portal_params: PortalParams,
+    params: ClientParams,
+) -> anyhow::Result<()> {
     let local_port = format!("{}:{}", params.interface, params.port);
     tracing::info!("running forwarding client (listening: {})", local_port);
 
@@ -111,8 +149,9 @@ async fn run_client(service: PortalService, params: ClientParams) -> anyhow::Res
     let (socket, _) = listener.accept().await?;
 
     // Connect to the tunnel.
+    let auth_token = portal_params.auth_token.as_deref().unwrap_or_default();
     let tunnel = service
-        .tunnel_client("mytoken", "1234")
+        .tunnel_client(auth_token, portal_params.portal_id, &portal_params.service)
         .await
         .context("failed to connect to tunnel server")?;
 

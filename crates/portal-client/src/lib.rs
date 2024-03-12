@@ -33,21 +33,26 @@ impl PortalService {
         Ok(Self { url })
     }
 
-    fn host_url(&self, id: &str) -> Url {
+    fn host_url(&self, portal_id: u64, service: &str) -> Url {
         let mut url = self.url.clone();
-        url.set_path(&format!("/connect/host/{id}"));
+        url.set_path(&format!("/connect/host/{portal_id}/{service}"));
         url
     }
 
-    fn client_url(&self, id: &str) -> Url {
+    fn client_url(&self, portal_id: u64, service: &str) -> Url {
         let mut url = self.url.clone();
-        url.set_path(&format!("/connect/client/{id}"));
+        url.set_path(&format!("/connect/client/{portal_id}/{service}"));
         url
     }
 
     /// Create a host connection to the tunnel service.
-    pub async fn tunnel_host(&self, token: &str, id: &str) -> Result<TunnelSocket, WsError> {
-        let url = self.host_url(id);
+    pub async fn tunnel_host(
+        &self,
+        token: &str,
+        portal_id: u64,
+        service: &str,
+    ) -> Result<TunnelSocket, WsError> {
+        let url = self.host_url(portal_id, service);
         tracing::debug!("tunnel_host {url}");
         let ws = websocket_connect(url.as_str(), token).await?;
 
@@ -55,8 +60,13 @@ impl PortalService {
     }
 
     /// Create a client connection to the tunnel service.
-    pub async fn tunnel_client(&self, token: &str, id: &str) -> Result<TunnelSocket, WsError> {
-        let url = self.client_url(id);
+    pub async fn tunnel_client(
+        &self,
+        token: &str,
+        portal_id: u64,
+        service: &str,
+    ) -> Result<TunnelSocket, WsError> {
+        let url = self.client_url(portal_id, service);
         tracing::debug!("tunnel_client {url}");
         let ws = websocket_connect(url.as_str(), token).await?;
 

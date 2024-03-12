@@ -1,12 +1,12 @@
+use portal_id::{PortalId, ServiceName};
 use token::Claims;
-use portal_id::PortalId;
 use worker::{console_log, event, Env, Headers, Request, Response, RouteContext, Router};
 
 use crate::token::{Role, TokenValidator};
 
 mod durable;
-mod token;
 mod portal_id;
+mod token;
 
 #[event(fetch)]
 pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> worker::Result<Response> {
@@ -14,8 +14,8 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> worker::Resu
 
     let router = Router::new();
     router
-        .get_async("/connect/host/:id", tunnel_host)
-        .get_async("/connect/client/:id", tunnel_client)
+        .get_async("/connect/host/:id/:service", tunnel_host)
+        .get_async("/connect/client/:id/:service", tunnel_client)
         .run(req, env)
         .await
 }
@@ -56,12 +56,21 @@ async fn check_authorization(req: &Request, expected_role: Role) -> Result<Claim
             }
         }
     }
-    return Err(Error::Unauthorized);
+    Err(Error::Unauthorized)
 }
 
-fn get_tunnel_id(ctx: &RouteContext<()>) -> Option<PortalId> {
+/// Extract the parameters from the URL.
+fn get_url_params(ctx: &RouteContext<()>) -> Option<(PortalId, ServiceName)> {
     let id = ctx.param("id")?;
-    id.parse::<PortalId>().ok()
+    let id = id.parse::<PortalId>().ok()?;
+    let service = ctx.param("service")?;
+    let service = service.to_owned().try_into().ok()?;
+    Some((id, service))
+}
+
+/// Render the portal ID and service name as a single string, to serve as a unique identifier.
+fn tunnel_identifier(portal_id: PortalId, service_name: &ServiceName) -> String {
+    format!("{portal_id}:{service_name}")
 }
 
 /// Handle incoming connection by tunnel host.
@@ -71,39 +80,46 @@ async fn tunnel_host(req: Request, ctx: RouteContext<()>) -> worker::Result<Resp
         Err(e) => return e.into_response(),
         Ok(claims) => claims,
     };
-
-    // Get tunnel id and verify it matches auth claims
-    let Some(id) = get_tunnel_id(&ctx) else {
+    // Extract the URL parameters.
+    let Some((portal_id, service_name)) = get_url_params(&ctx) else {
         return Error::MalformedRequest.into_response();
     };
-    if claims.portal_id != id {
-        console_log!("host {} incorrect id", claims.sub);
+    // Verify that the token allows access to this portal id.
+    if claims.portal_id != portal_id {
+        console_log!("host {} incorrect portal id", claims.sub);
         return Error::Unauthorized.into_response();
     }
-    console_log!("host connect to {id}");
+
+    console_log!("host connect to {portal_id}:{service_name}");
 
     let namespace = ctx.durable_object("TUNNEL")?;
-    let id = namespace.id_from_name(&id.to_string())?;
+
+    let id = namespace.id_from_name(&tunnel_identifier(portal_id, &service_name))?;
     let stub = id.get_stub()?;
     stub.fetch_with_request(req).await
 }
 
 /// Handle incoming connection by tunnel client.
 async fn tunnel_client(req: Request, ctx: RouteContext<()>) -> worker::Result<Response> {
-    let Some(id) = get_tunnel_id(&ctx) else {
+    // Check authorization
+    let claims = match check_authorization(&req, Role::Client).await {
+        Err(e) => return e.into_response(),
+        Ok(claims) => claims,
+    };
+    // Extract the URL parameters.
+    let Some((portal_id, service_name)) = get_url_params(&ctx) else {
         return Error::MalformedRequest.into_response();
     };
-    console_log!("client connect to {id}");
+    // Verify that the token allows access to this portal id.
+    if claims.portal_id != portal_id {
+        console_log!("client {} incorrect portal id", claims.sub);
+        return Error::Unauthorized.into_response();
+    }
+
+    console_log!("client connect to {portal_id}:{service_name}");
 
     let namespace = ctx.durable_object("TUNNEL")?;
-    let id = namespace.id_from_name(&id.to_string())?;
+    let id = namespace.id_from_name(&tunnel_identifier(portal_id, &service_name))?;
     let stub = id.get_stub()?;
     stub.fetch_with_request(req).await
-}
-
-/// Generate a random channel number.
-fn random_channel() -> u32 {
-    let mut array = [0u8; 4];
-    worker::crypto().get_random_values_with_u8_array(&mut array).unwrap();
-    u32::from_ne_bytes(array)
 }
