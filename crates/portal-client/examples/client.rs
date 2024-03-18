@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use anyhow::{bail, Context};
+use anyhow::{anyhow, bail, Context};
 use clap::Parser;
 use futures_util::{SinkExt, StreamExt};
 use portal_client::PortalService;
@@ -44,10 +44,13 @@ async fn run_client(args: &Arguments) -> anyhow::Result<()> {
 
     loop {
         tokio::select! {
-            stream_result = tunnel.next()  => {
-                let message = stream_result
-                .context("no message received")? // .next() returned None (shouldn't happen?)
-                .context("error on websocket stream")?; // .next() returned Some(Err(...))
+            stream_result = tunnel.next() => {
+                // Using the ? operator here confuses the tokio::select macro
+                let message = match stream_result {
+                    None => break Err(anyhow!("websocket closed")),
+                    Some(Err(e)) => break Err(anyhow!(e)),
+                    Some(Ok(message)) => message,
+                };
 
                 let printable_message = match std::str::from_utf8(&message) {
                     Ok(text) => Cow::from(text),

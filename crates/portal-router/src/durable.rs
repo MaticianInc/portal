@@ -24,10 +24,7 @@ impl DurableObject for DurableRouter {
 
     async fn fetch(&mut self, req: Request) -> worker::Result<Response> {
         let path = req.path();
-        console_log!("DurableRouter fetch {path}");
-
         let route = Self::parse_path(&path);
-        console_log!("parsed {path} -> {route:?}");
         match route {
             None => {
                 console_log!("DurableRouter fetch 404");
@@ -57,6 +54,32 @@ impl DurableObject for DurableRouter {
             }
             console_log!("unrecognized tag {tag}");
         }
+        Ok(())
+    }
+
+    async fn websocket_close(
+        &mut self,
+        _ws: WebSocket,
+        _code: usize,
+        _reason: String,
+        _was_clean: bool,
+    ) -> worker::Result<()> {
+        console_log!("websocket_close");
+        // We don't care which websocket closed; we want to destroy all state.
+        let sockets = self.state.get_websockets();
+        for socket in sockets {
+            // We don't supply a code or reason. We don't care if the close fails.
+            let _ = socket.close(None, None::<&str>);
+        }
+        Ok(())
+    }
+
+    async fn websocket_error(
+        &mut self,
+        _ws: WebSocket,
+        _error: worker::Error,
+    ) -> worker::Result<()> {
+        console_log!("websocket_error");
         Ok(())
     }
 }

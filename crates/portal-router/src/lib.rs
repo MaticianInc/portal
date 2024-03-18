@@ -50,7 +50,7 @@ async fn check_authorization(req: &Request, expected_role: Role) -> Result<Claim
     if let Some(token) = get_auth_header(req.headers()) {
         let validator = TokenValidator::new("s33kr1t".as_bytes()).await;
         if let Ok(claims) = validator.validate_token(&token).await {
-            console_log!("got signed token with claims: {claims:?}");
+            //console_log!("got signed token with claims: {claims:?}");
             if claims.role == expected_role {
                 return Ok(claims);
             }

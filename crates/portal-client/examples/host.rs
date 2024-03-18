@@ -41,8 +41,8 @@ async fn run_host(args: &Arguments) -> anyhow::Result<()> {
         let message = tunnel
             .next()
             .await
-            .context("no message received")? // .next() returned None (shouldn't happen?)
-            .context("error on websocket stream")?; // .next() returned Some(Err(...))
+            .context("websocket closed")?
+            .context("error on websocket stream")?; // misc. network error
 
         let printable_message = match std::str::from_utf8(&message) {
             Ok(text) => Cow::from(text),
