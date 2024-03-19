@@ -46,13 +46,20 @@ impl Error {
 /// Verify that an authentication token is present, and it is correct for this request.
 ///
 /// Returns the id of the tunnel.
-async fn check_authorization(req: &Request, expected_role: Role) -> Result<Claims, Error> {
+async fn check_authorization(
+    ctx: &RouteContext<()>,
+    req: &Request,
+    expected_role: Role,
+) -> Result<Claims, Error> {
     if let Some(token) = get_auth_header(req.headers()) {
-        let validator = TokenValidator::new("s33kr1t".as_bytes()).await;
-        if let Ok(claims) = validator.validate_token(&token).await {
-            //console_log!("got signed token with claims: {claims:?}");
-            if claims.role == expected_role {
-                return Ok(claims);
+        if let Ok(jwt_secret) = ctx.secret("jwt_secret") {
+            let jwt_secret = jwt_secret.to_string();
+            let validator = TokenValidator::new(jwt_secret.as_bytes()).await;
+            if let Ok(claims) = validator.validate_token(&token).await {
+                //console_log!("got signed token with claims: {claims:?}");
+                if claims.role == expected_role {
+                    return Ok(claims);
+                }
             }
         }
     }
@@ -76,7 +83,7 @@ fn tunnel_identifier(portal_id: PortalId, service_name: &ServiceName) -> String 
 /// Handle incoming connection by tunnel host.
 async fn tunnel_host(req: Request, ctx: RouteContext<()>) -> worker::Result<Response> {
     // Check authorization
-    let claims = match check_authorization(&req, Role::Host).await {
+    let claims = match check_authorization(&ctx, &req, Role::Host).await {
         Err(e) => return e.into_response(),
         Ok(claims) => claims,
     };
@@ -102,7 +109,7 @@ async fn tunnel_host(req: Request, ctx: RouteContext<()>) -> worker::Result<Resp
 /// Handle incoming connection by tunnel client.
 async fn tunnel_client(req: Request, ctx: RouteContext<()>) -> worker::Result<Response> {
     // Check authorization
-    let claims = match check_authorization(&req, Role::Client).await {
+    let claims = match check_authorization(&ctx, &req, Role::Client).await {
         Err(e) => return e.into_response(),
         Ok(claims) => claims,
     };
