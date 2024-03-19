@@ -1,4 +1,6 @@
-use anyhow::Context;
+use std::time::Duration;
+
+use anyhow::{anyhow, Context};
 use clap::{Parser, Subcommand};
 use futures_util::{Sink, SinkExt as _, Stream, StreamExt as _};
 use portal_client::PortalService;
@@ -41,6 +43,10 @@ struct PortalParams {
     /// The service name
     #[arg(long, default_value = "")]
     service: String,
+
+    /// Reconnect after connection ends
+    #[arg(long)]
+    reconnect: bool,
 }
 
 #[derive(Debug, Parser)]
@@ -81,23 +87,81 @@ async fn main() -> anyhow::Result<()> {
 
     let service = PortalService::new(&args.server)?;
 
-    match args.mode {
+    match &args.mode {
         ForwardingMode::Host(host_params) => {
-            forwarding_host(service, args.portal_params, host_params).await?
+            run_host(&service, &args.portal_params, host_params).await?
         }
         ForwardingMode::Client(client_params) => {
-            run_client(service, args.portal_params, client_params).await?
+            run_client(&service, &args.portal_params, client_params).await?
         }
     }
 
     Ok(())
 }
 
+#[derive(Debug, thiserror::Error)]
+enum ForwardError {
+    /// An error during initial connection to the portal service.
+    ///
+    /// This may indicate a loss of network connectivity.
+    #[error("portal connect error: {0}")]
+    Connect(anyhow::Error),
+    /// An error sending or receiving data to the portal service.
+    ///
+    /// This probably means the network connection was lost.
+    #[error("portal dropped error: {0}")]
+    Dropped(anyhow::Error),
+    /// An error connecting via local TCP socket.
+    #[error("tcp error: {0}")]
+    TcpConnect(anyhow::Error),
+    /// An error sending or receiving data on a local TCP socket.
+    #[error("tcp error: {0}")]
+    TcpDropped(anyhow::Error),
+}
+
+impl ForwardError {
+    /// If the error may indicate a network disruption, sleep for a few seconds.
+    ///
+    /// If the error indicates that a working connection ended, do nothing.
+    async fn retry_delay(&self) {
+        match self {
+            ForwardError::Connect(_) | ForwardError::TcpDropped(_) => {
+                tokio::time::sleep(Duration::from_secs(10)).await
+            }
+            _ => (),
+        }
+    }
+}
+
+/// Make one or more host connections to the portal service.
+///
+/// If `reconnect` was specified, we will keep attempting to reconnect after
+/// a connection failure or connection loss.
+///
+/// Only one connection will be established at a time; the previous connection
+/// must terminate before a new one will be attempted.
+async fn run_host(
+    service: &PortalService,
+    portal_params: &PortalParams,
+    params: &HostParams,
+) -> Result<(), ForwardError> {
+    loop {
+        if let Err(e) = forwarding_host(service, portal_params, params).await {
+            e.retry_delay().await;
+            tracing::info!("{e}");
+        }
+        if !portal_params.reconnect {
+            return Ok(());
+        }
+    }
+}
+
+/// Make a host connection to the portal service.
 async fn forwarding_host(
-    service: PortalService,
-    portal_params: PortalParams,
-    params: HostParams,
-) -> anyhow::Result<()> {
+    service: &PortalService,
+    portal_params: &PortalParams,
+    params: &HostParams,
+) -> Result<(), ForwardError> {
     let host_port = format!("{}:{}", params.target_host, params.target_port);
     tracing::info!("running forwarding host (target: {})", host_port);
 
@@ -105,28 +169,37 @@ async fn forwarding_host(
     let mut tunnel = service
         .tunnel_host(auth_token, portal_params.portal_id, &portal_params.service)
         .await
-        .context("failed to connect to tunnel server")?;
+        // FIXME: we should distinguish between authentication errors
+        // and network errors; the former should not be retried.
+        .map_err(|e| ForwardError::Connect(e.into()))?;
 
     // Wait for the first forwarded bytes to arrive before creating the local TCP connection.
-    let message = tunnel
-        .next()
-        .await
-        .context("no message received")? // .next() returned None (shouldn't happen?)
-        .context("error on websocket stream")?; // .next() returned Some(Err(...))
+    //
+    let message = match tunnel.next().await {
+        Some(Ok(message)) => message,
+        _ => {
+            return Err(ForwardError::Dropped(anyhow!(
+                "websocket error waiting for first bytes"
+            )));
+        }
+    };
 
     let mut socket = TcpStream::connect(&host_port)
         .await
-        .context("failed to open forwarding tcp stream")?;
+        .context("failed to open forwarding tcp stream")
+        .map_err(ForwardError::TcpConnect)?;
 
     // Forward the first bytes.
     socket
         .write_all(&message)
         .await
-        .context("failed to write message to TCP socket")?;
+        .context("failed to write message to TCP socket")
+        .map_err(ForwardError::TcpDropped)?;
 
     let (tun_sender, tun_receiver) = tunnel.split();
     let (tcp_receiver, tcp_sender) = socket.into_split();
 
+    // FIXME: for consistency, this should return appropriate ForwardError
     tokio::select! {
         _ = tcp_to_tunnel(tcp_receiver, tun_sender) => (),
         _ = tunnel_to_tcp(tun_receiver, tcp_sender) => (),
@@ -137,27 +210,57 @@ async fn forwarding_host(
 
 /// Wait for an incoming connection, then initiate a tunnel and forward data.
 async fn run_client(
-    service: PortalService,
-    portal_params: PortalParams,
-    params: ClientParams,
-) -> anyhow::Result<()> {
+    service: &PortalService,
+    portal_params: &PortalParams,
+    params: &ClientParams,
+) -> Result<(), ForwardError> {
     let local_port = format!("{}:{}", params.interface, params.port);
     tracing::info!("running forwarding client (listening: {})", local_port);
 
     // Accept a single incoming connection.
-    let listener = TcpListener::bind(&local_port).await?;
-    let (socket, _) = listener.accept().await?;
+    let listener = TcpListener::bind(&local_port)
+        .await
+        .context("failed to bind TCP port")
+        .map_err(ForwardError::TcpConnect)?;
+    loop {
+        let (socket, _) = listener
+            .accept()
+            .await
+            .context("failed to accept TCP connection")
+            .map_err(ForwardError::TcpConnect)?;
 
+        // We only forward one connection at a time.
+        match client_connection(service, portal_params, socket).await {
+            Err(e) => {
+                tracing::info!("{e}");
+                e.retry_delay().await;
+            }
+            _ => tracing::info!("connection ended"),
+        }
+        if !portal_params.reconnect {
+            return Ok(());
+        }
+    }
+}
+
+async fn client_connection(
+    service: &PortalService,
+    portal_params: &PortalParams,
+    socket: TcpStream,
+) -> Result<(), ForwardError> {
     // Connect to the tunnel.
     let auth_token = portal_params.auth_token.as_deref().unwrap_or_default();
     let tunnel = service
         .tunnel_client(auth_token, portal_params.portal_id, &portal_params.service)
         .await
-        .context("failed to connect to tunnel server")?;
+        // FIXME: we should distinguish between authentication errors
+        // and network errors; the former should not be retried.
+        .map_err(|e| ForwardError::Connect(e.into()))?;
 
     let (tun_sender, tun_receiver) = tunnel.split();
     let (tcp_receiver, tcp_sender) = socket.into_split();
 
+    // FIXME: for consistency, this should return appropriate ForwardError
     tokio::select! {
         _ = tcp_to_tunnel(tcp_receiver, tun_sender) => (),
         _ = tunnel_to_tcp(tun_receiver, tcp_sender) => (),
