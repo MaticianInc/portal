@@ -199,9 +199,11 @@ async fn forwarding_host(
     let (tun_sender, tun_receiver) = tunnel.split();
     let (tcp_receiver, tcp_sender) = socket.into_split();
 
+    let keepalive_period = Duration::from_secs(120);
+
     // FIXME: for consistency, this should return appropriate ForwardError
     tokio::select! {
-        _ = tcp_to_tunnel(tcp_receiver, tun_sender) => (),
+        _ = tcp_to_tunnel(tcp_receiver, tun_sender, keepalive_period) => (),
         _ = tunnel_to_tcp(tun_receiver, tcp_sender) => (),
     }
 
@@ -260,9 +262,11 @@ async fn client_connection(
     let (tun_sender, tun_receiver) = tunnel.split();
     let (tcp_receiver, tcp_sender) = socket.into_split();
 
+    let disable_keepalives = Duration::MAX;
+
     // FIXME: for consistency, this should return appropriate ForwardError
     tokio::select! {
-        _ = tcp_to_tunnel(tcp_receiver, tun_sender) => (),
+        _ = tcp_to_tunnel(tcp_receiver, tun_sender, disable_keepalives) => (),
         _ = tunnel_to_tcp(tun_receiver, tcp_sender) => (),
     }
 
@@ -270,7 +274,7 @@ async fn client_connection(
 }
 
 /// Read data from a TCP socket and write it to a tunnel.
-async fn tcp_to_tunnel<R, W>(mut tcp_receiver: R, mut ws_sender: W) -> anyhow::Result<()>
+async fn tcp_to_tunnel<R, W>(mut tcp_receiver: R, mut ws_sender: W, keepalive_period: Duration) -> anyhow::Result<()>
 where
     R: tokio::io::AsyncRead + Unpin,
     W: Sink<Vec<u8>> + Unpin,
@@ -280,22 +284,38 @@ where
 
     loop {
         let mut buf = Vec::new();
-        let bytes_read = tcp_receiver
-            .read_buf(&mut buf)
-            .await
-            .context("error reading from TCP socket")?;
-        if bytes_read == 0 {
-            // This usually means the socket closed.
-            return Ok(());
+
+        // Race a timeout (for keepalives) with a TCP read.
+        // Note: `AsyncReadExt::read_buf` is documented to be cancel-safe.
+        let result = tokio::select! {
+            tcp_result = tcp_receiver.read_buf(&mut buf) => Some(tcp_result),
+            _ = tokio::time::sleep(keepalive_period) => None,
+        };
+
+        match result {
+            Some(Err(e)) => {
+                return Err(e).context("error reading from TCP socket");
+            }
+            Some(Ok(0)) => {
+                // the socket read returned a length of 0 bytes.
+                // This usually means the socket closed.
+                return Ok(());
+            }
+            Some(Ok(_)) => {
+                ws_sender
+                    .send(buf)
+                    .await
+                    .context("websocket write failed")?;
+            }
+            None => {
+                // The sleep expired; send a websocket ping as a keepalive.
+                // We (mis-)use an empty vec to trigger keepalive send.
+                ws_sender
+                    .send(buf)
+                    .await
+                    .context("websocket write(ping) failed")?;
+            }
         }
-        // copy data from buffer. FIXME: is there a way to do this without copying?
-        //let tx_buf = buf.to_vec();
-        //tracing::debug!("tcp->ws {tx_buf:?}");
-        // write data to websocket
-        ws_sender
-            .send(buf)
-            .await
-            .context("websocket write failed")?;
     }
 }
 

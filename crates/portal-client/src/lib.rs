@@ -118,7 +118,12 @@ impl Sink<Vec<u8>> for TunnelSocket {
     }
 
     fn start_send(self: Pin<&mut Self>, item: Vec<u8>) -> Result<(), Self::Error> {
-        let item = Message::Binary(item);
+        // We (mis-)use an empty Vec to signal that a keepalive should be sent.
+        let item = if item.is_empty() {
+            Message::Ping(item)
+        } else {
+            Message::Binary(item)
+        };
 
         let mut ws = self.project().ws;
         ws.as_mut().start_send(item).map_err(|_| SinkError)
