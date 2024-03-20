@@ -12,26 +12,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::portal_id::PortalId;
 
-// pub struct Capability {
-//     role: Role,
-// }
-
-// #[async_trait]
-// impl<S> FromRequestParts<S> for Capability
-// where
-//     S: Sync + Send,
-// {
-//     type Rejection = StatusCode;
-
-//     async fn from_request_parts(
-//         parts: &mut axum::http::request::Parts,
-//         state: &S,
-//     ) -> Result<Self, Self::Rejection> {
-//         let claims = JwtClaims::from_request_parts(parts, state).await?;
-//         Ok(Self { role: claims.role })
-//     }
-// }
-
 /// Claims that we use to form a JWT.
 ///
 /// All claims need to be present for a token to be considered valid.
