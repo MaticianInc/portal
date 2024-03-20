@@ -101,9 +101,18 @@ where
 ///
 /// Add this to the axum router by calling:
 /// ```
+/// # use std::sync::Arc;
+/// # use demo_router::auth::{Auth, JwtClaims};
+/// # use axum::{Extension, Router, extract::State, routing::get};
+/// # let secret = "secret";
+///
+/// # async fn needs_auth(_claims: JwtClaims, _: State<()>) {}
+///
 /// let auth = Arc::new(Auth::new(secret));
-/// // Do this after adding routes that need authorization.
-/// router.layer(Extension(auth))
+///
+/// let router = Router::new()
+///     .route("/needs_auth", get(needs_auth))
+///     .layer(Extension(auth));
 /// ```
 pub struct Auth {
     decoding_key: DecodingKey,
