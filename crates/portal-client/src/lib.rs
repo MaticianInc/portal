@@ -101,7 +101,7 @@ impl Stream for TunnelSocket {
             };
 
             match message {
-                Message::Text(_) => (),
+                Message::Text(text) => tracing::info!("service message: {text}"),
                 Message::Binary(message) => return Poll::Ready(Some(Ok(message))),
                 _ => (),
             }
