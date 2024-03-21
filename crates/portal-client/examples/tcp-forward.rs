@@ -62,7 +62,7 @@ struct HostParams {
 #[derive(Debug, Parser)]
 struct ClientParams {
     /// Local interface to listen on
-    #[arg(long, default_value = "127.0.0.1")]
+    #[arg(long, default_value = "0.0.0.0")]
     interface: String,
     /// Local port to listen on
     #[arg(long)]
