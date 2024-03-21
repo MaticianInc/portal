@@ -1,5 +1,7 @@
 use std::pin::Pin;
+use std::sync::OnceLock;
 use std::task::{Context, Poll};
+use std::time::Instant;
 
 use futures_util::{Sink, Stream};
 use tokio::net::TcpStream;
@@ -103,6 +105,19 @@ impl Stream for TunnelSocket {
             match message {
                 Message::Text(text) => tracing::info!("service message: {text}"),
                 Message::Binary(message) => return Poll::Ready(Some(Ok(message))),
+                Message::Ping(_) => {
+                    tracing::debug!("received ping message");
+                }
+                Message::Pong(message) => {
+                    // We expect a Pong message to contain 8 bytes, that contain
+                    // the f64 timestamp we sent in a Ping.
+                    if let Ok(ts_bytes) = <[u8; 8]>::try_from(message) {
+                        let ping_timestamp = f64::from_be_bytes(ts_bytes);
+                        let now = get_timestamp();
+                        let delta_time = 1000.0 * (now - ping_timestamp);
+                        tracing::debug!("ping-pong time {delta_time} ms")
+                    }
+                }
                 _ => (),
             }
         }
@@ -120,7 +135,8 @@ impl Sink<Vec<u8>> for TunnelSocket {
     fn start_send(self: Pin<&mut Self>, item: Vec<u8>) -> Result<(), Self::Error> {
         // We (mis-)use an empty Vec to signal that a keepalive should be sent.
         let item = if item.is_empty() {
-            Message::Ping(item)
+            let timestamp = get_timestamp();
+            Message::Ping(timestamp.to_be_bytes().into())
         } else {
             Message::Binary(item)
         };
@@ -150,4 +166,12 @@ async fn websocket_connect(url: &str, token: &str) -> Result<TcpWebSocket, WsErr
     let (bot_websocket, http_response) = connect_async(request).await?;
     tracing::debug!("got http response: {http_response:?}");
     Ok(bot_websocket)
+}
+
+static TIMESTAMP_BASE: OnceLock<Instant> = OnceLock::new();
+
+/// Get a monotonic timestamp, in f64 seconds.
+fn get_timestamp() -> f64 {
+    let base = TIMESTAMP_BASE.get_or_init(Instant::now);
+    base.elapsed().as_secs_f64()
 }

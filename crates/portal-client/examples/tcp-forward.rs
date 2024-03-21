@@ -8,6 +8,8 @@ use tokio::io::AsyncWriteExt as _;
 use tokio::net::{TcpListener, TcpStream};
 use tracing_subscriber::EnvFilter;
 
+use counters::PerfCounters;
+
 #[derive(Debug, Parser)]
 struct Arguments {
     /// Server base URL
@@ -203,8 +205,8 @@ async fn forwarding_host(
 
     // FIXME: for consistency, this should return appropriate ForwardError
     tokio::select! {
-        _ = tcp_to_tunnel(tcp_receiver, tun_sender, keepalive_period) => (),
-        _ = tunnel_to_tcp(tun_receiver, tcp_sender) => (),
+        _ = tcp_to_tunnel(tcp_receiver, tun_sender, keepalive_period, None) => (),
+        _ = tunnel_to_tcp(tun_receiver, tcp_sender, None) => (),
     }
 
     Ok(())
@@ -219,6 +221,8 @@ async fn run_client(
     let local_port = format!("{}:{}", params.interface, params.port);
     tracing::info!("running forwarding client (listening: {})", local_port);
 
+    let counters = PerfCounters::new();
+
     // Accept a single incoming connection.
     let listener = TcpListener::bind(&local_port)
         .await
@@ -232,13 +236,17 @@ async fn run_client(
             .map_err(ForwardError::TcpConnect)?;
 
         // We only forward one connection at a time.
-        match client_connection(service, portal_params, socket).await {
+        match client_connection(service, portal_params, socket, &counters).await {
             Err(e) => {
                 tracing::info!("{e}");
                 e.retry_delay().await;
             }
             _ => tracing::info!("connection ended"),
         }
+
+        tracing::info!("{counters:#}");
+        counters.clear();
+
         if !portal_params.reconnect {
             return Ok(());
         }
@@ -249,6 +257,7 @@ async fn client_connection(
     service: &PortalService,
     portal_params: &PortalParams,
     socket: TcpStream,
+    counters: &PerfCounters,
 ) -> Result<(), ForwardError> {
     // Connect to the tunnel.
     let auth_token = portal_params.auth_token.as_deref().unwrap_or_default();
@@ -266,15 +275,20 @@ async fn client_connection(
 
     // FIXME: for consistency, this should return appropriate ForwardError
     tokio::select! {
-        _ = tcp_to_tunnel(tcp_receiver, tun_sender, disable_keepalives) => (),
-        _ = tunnel_to_tcp(tun_receiver, tcp_sender) => (),
+        _ = tcp_to_tunnel(tcp_receiver, tun_sender, disable_keepalives, Some(counters)) => (),
+        _ = tunnel_to_tcp(tun_receiver, tcp_sender, Some(counters)) => (),
     }
 
     Ok(())
 }
 
 /// Read data from a TCP socket and write it to a tunnel.
-async fn tcp_to_tunnel<R, W>(mut tcp_receiver: R, mut ws_sender: W, keepalive_period: Duration) -> anyhow::Result<()>
+async fn tcp_to_tunnel<R, W>(
+    mut tcp_receiver: R,
+    mut ws_sender: W,
+    keepalive_period: Duration,
+    counters: Option<&PerfCounters>,
+) -> anyhow::Result<()>
 where
     R: tokio::io::AsyncRead + Unpin,
     W: Sink<Vec<u8>> + Unpin,
@@ -283,7 +297,7 @@ where
     use tokio::io::AsyncReadExt;
 
     loop {
-        let mut buf = Vec::new();
+        let mut buf = Vec::with_capacity(65536);
 
         // Race a timeout (for keepalives) with a TCP read.
         // Note: `AsyncReadExt::read_buf` is documented to be cancel-safe.
@@ -302,14 +316,20 @@ where
                 return Ok(());
             }
             Some(Ok(_)) => {
+                let msg_size = buf.len() as u64;
                 ws_sender
                     .send(buf)
                     .await
                     .context("websocket write failed")?;
+                if let Some(counters) = counters {
+                    // "out" is from the TCP socket to the tunnel.
+                    counters.count_out(msg_size);
+                }
             }
             None => {
                 // The sleep expired; send a websocket ping as a keepalive.
                 // We (mis-)use an empty vec to trigger keepalive send.
+                tracing::debug!("sending keepalive ping");
                 ws_sender
                     .send(buf)
                     .await
@@ -320,7 +340,11 @@ where
 }
 
 /// Forward data unidirectionally from a tunnel to a TCP socket.
-async fn tunnel_to_tcp<R, W, E>(mut ws_receiver: R, mut tcp_sender: W) -> anyhow::Result<()>
+async fn tunnel_to_tcp<R, W, E>(
+    mut ws_receiver: R,
+    mut tcp_sender: W,
+    counters: Option<&PerfCounters>,
+) -> anyhow::Result<()>
 where
     R: Stream<Item = Result<Vec<u8>, E>> + Unpin,
     W: tokio::io::AsyncWrite + Unpin,
@@ -337,5 +361,81 @@ where
             .write_all(&message_bytes)
             .await
             .context("failed to write message to TCP socket")?;
+        if let Some(counters) = counters {
+            // "in" is from the tunnel to the TCP socket.
+            counters.count_in(message_bytes.len() as u64);
+        }
+    }
+}
+
+mod counters {
+    use std::fmt::Display;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    /// Performance counters for a network tunnel.
+    ///
+    /// Counts the number of bytes and the number of messages sent and received.
+    #[derive(Debug, Default)]
+    pub struct PerfCounters {
+        in_bytes: AtomicU64,
+        in_messages: AtomicU64,
+        out_bytes: AtomicU64,
+        out_messages: AtomicU64,
+    }
+
+    impl PerfCounters {
+        /// Create new counters
+        pub const fn new() -> Self {
+            Self {
+                in_bytes: AtomicU64::new(0),
+                in_messages: AtomicU64::new(0),
+                out_bytes: AtomicU64::new(0),
+                out_messages: AtomicU64::new(0),
+            }
+        }
+
+        /// Clear the counters
+        pub fn clear(&self) {
+            self.in_bytes.store(0, Ordering::Relaxed);
+            self.in_messages.store(0, Ordering::Relaxed);
+            self.out_bytes.store(0, Ordering::Relaxed);
+            self.out_messages.store(0, Ordering::Relaxed);
+        }
+
+        /// Add an incoming message to the counters.
+        pub fn count_in(&self, message_size: u64) {
+            self.in_bytes.fetch_add(message_size, Ordering::Relaxed);
+            self.in_messages.fetch_add(1, Ordering::Relaxed);
+        }
+
+        /// Add an outgoing message to the counters.
+        pub fn count_out(&self, message_size: u64) {
+            self.out_bytes.fetch_add(message_size, Ordering::Relaxed);
+            self.out_messages.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    impl Display for PerfCounters {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            let in_bytes = self.in_bytes.load(Ordering::Relaxed);
+            let in_messages = self.in_messages.load(Ordering::Relaxed);
+            let in_avg = if in_messages == 0 {
+                0
+            } else {
+                in_bytes / in_messages
+            };
+            let out_bytes = self.out_bytes.load(Ordering::Relaxed);
+            let out_messages = self.out_messages.load(Ordering::Relaxed);
+            let out_avg = if out_messages == 0 {
+                0
+            } else {
+                out_bytes / out_messages
+            };
+            let break_char = if f.alternate() { ' ' } else { '\n' };
+            write!(
+                f,
+                "in: {in_bytes} bytes, {in_messages} messages (avg msg size {in_avg}){break_char}out: {out_bytes} bytes, {out_messages} messages (avg msg size {out_avg})"
+            )
+        }
     }
 }
