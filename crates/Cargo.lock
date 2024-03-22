@@ -398,7 +398,6 @@ dependencies = [
  "futures-util",
  "jsonwebtoken",
  "portal-types",
- "serde",
  "thiserror",
  "tokio",
  "tokio-stream",

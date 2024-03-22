@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::ops::Deref;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -8,35 +8,30 @@ use axum_extra::headers::authorization::Bearer;
 use axum_extra::headers::Authorization;
 use axum_extra::TypedHeader;
 use jsonwebtoken::{DecodingKey, Validation};
-use serde::{Deserialize, Serialize};
 
-use portal_types::PortalId;
+use portal_types::{JwtClaims, PortalId, Role};
 
-/// Claims that we use to form a JWT.
-///
-/// All claims need to be present for a token to be considered valid.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct JwtClaims {
-    /// Subject. Optional in RFC 7519.
-    pub sub: String,
-    /// Expiration time as UTC timestamp. Required by RFC7519.
-    pub exp: usize,
-    /// Role: whether the token holder is a tunnel host or client.
-    pub role: Role,
-    /// The id of the portal that the holder is allowed to access.
-    pub portal_id: PortalId,
+/// A wrapper around `JwtClaims` so we can impl additional methods and traits.
+pub struct Claims(JwtClaims);
+
+impl Deref for Claims {
+    type Target = JwtClaims;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
-impl JwtClaims {
+impl Claims {
     pub fn check(&self, role: Role, portal_id: PortalId) -> Result<(), StatusCode> {
-        if self.role != role {
-            tracing::error!("{} does not have role {:?}", self.sub, role);
+        if self.0.role != role {
+            tracing::error!("{} does not have role {:?}", self.0.sub, role);
             return Err(StatusCode::UNAUTHORIZED);
         }
-        if self.portal_id != portal_id {
+        if self.0.portal_id != portal_id {
             tracing::error!(
                 "client {} does not have permission to access tunnel {portal_id}",
-                self.sub
+                self.0.sub
             );
             return Err(StatusCode::UNAUTHORIZED);
         }
@@ -44,29 +39,8 @@ impl JwtClaims {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Role {
-    /// A host offers a tunnel, and waits for a client to connect.
-    Host,
-    /// A client connects to an existing tunnel.
-    Client,
-}
-
-impl FromStr for Role {
-    type Err = &'static str;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "host" => Ok(Role::Host),
-            "client" => Ok(Role::Client),
-            _ => Err("unknown role"),
-        }
-    }
-}
-
 #[async_trait]
-impl<S> FromRequestParts<S> for JwtClaims
+impl<S> FromRequestParts<S> for Claims
 where
     S: Sync + Send,
 {
@@ -93,7 +67,7 @@ where
         .map_err(|_| StatusCode::UNAUTHORIZED)?;
         let claims = token_data.claims;
         tracing::debug!("authorized: {}", claims.sub);
-        Ok(claims)
+        Ok(Claims(claims))
     }
 }
 

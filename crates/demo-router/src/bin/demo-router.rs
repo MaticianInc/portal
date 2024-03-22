@@ -9,9 +9,9 @@ use axum::{routing::get, Router};
 use dashmap::DashMap;
 use futures_util::StreamExt;
 
-use demo_router::auth::{Auth, JwtClaims, Role};
+use demo_router::auth::{Auth, Claims};
 use demo_router::monitor::IdleWebSocket;
-use portal_types::{PortalId, ServiceName};
+use portal_types::{PortalId, Role, ServiceName};
 
 /// This only contains host tunnels that are waiting for a client.
 #[derive(Default)]
@@ -81,7 +81,7 @@ async fn main() {
 async fn connect_host(
     State(state): State<Arc<WaitingTunnels>>,
     Path((portal_id, service_name)): Path<(PortalId, ServiceName)>,
-    auth_claims: JwtClaims,
+    auth_claims: Claims,
     ws: WebSocketUpgrade,
 ) -> impl IntoResponse {
     if let Err(status_code) = auth_claims.check(Role::Host, portal_id) {
@@ -98,7 +98,7 @@ async fn connect_host(
 async fn connect_client(
     State(state): State<Arc<WaitingTunnels>>,
     Path((portal_id, service_name)): Path<(PortalId, ServiceName)>,
-    auth_claims: JwtClaims,
+    auth_claims: Claims,
     ws: WebSocketUpgrade,
 ) -> impl IntoResponse {
     if let Err(status_code) = auth_claims.check(Role::Client, portal_id) {

@@ -1,8 +1,8 @@
-use portal_types::{PortalId, ServiceName};
-use token::Claims;
 use worker::{console_log, event, Env, Headers, Request, Response, RouteContext, Router};
 
-use crate::token::{Role, TokenValidator};
+use portal_types::{JwtClaims, PortalId, Role, ServiceName};
+
+use crate::token::TokenValidator;
 
 mod durable;
 mod token;
@@ -49,7 +49,7 @@ async fn check_authorization(
     ctx: &RouteContext<()>,
     req: &Request,
     expected_role: Role,
-) -> Result<Claims, Error> {
+) -> Result<JwtClaims, Error> {
     if let Some(token) = get_auth_header(req.headers()) {
         if let Ok(jwt_secret) = ctx.secret("jwt_secret") {
             let jwt_secret = jwt_secret.to_string();

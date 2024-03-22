@@ -1,29 +1,8 @@
 use jwt_webcrypto::{Algorithm, Validator};
-use serde::Deserialize;
-
-use portal_types::PortalId;
+use portal_types::JwtClaims;
 
 #[derive(Debug, Clone, Copy)]
 pub struct ValidationError;
-
-#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Role {
-    /// The token holder will act as a tunnel host.
-    Host,
-    /// The token holder will act as a tunnel client.
-    Client,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct Claims {
-    /// Subject: who the token was issued to.
-    pub sub: String,
-    /// Role: whether the token holder is a tunnel host or client.
-    pub role: Role,
-    /// The id of the tunnel that the holder is allowed to access.
-    pub portal_id: PortalId,
-}
 
 pub struct TokenValidator {
     validator: Validator,
@@ -39,14 +18,14 @@ impl TokenValidator {
         Self { validator }
     }
 
-    pub async fn validate_token(&self, token: &str) -> Result<Claims, ValidationError> {
+    pub async fn validate_token(&self, token: &str) -> Result<JwtClaims, ValidationError> {
         let payload = self
             .validator
             .validate(token)
             .await
             .map_err(|_| ValidationError)?;
 
-        let claims: Claims = serde_json::from_slice(&payload).map_err(|_| ValidationError)?;
+        let claims: JwtClaims = serde_json::from_slice(&payload).map_err(|_| ValidationError)?;
         Ok(claims)
     }
 }

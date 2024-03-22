@@ -1,8 +1,9 @@
 use std::time::{Duration, SystemTime};
 
 use clap::Parser;
-use demo_router::auth::{JwtClaims, Role};
+
 use jsonwebtoken::{EncodingKey, Header};
+use portal_types::{JwtClaims, Role};
 
 #[derive(Debug, Parser)]
 struct Arguments {
