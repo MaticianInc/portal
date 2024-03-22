@@ -10,7 +10,7 @@ use axum_extra::TypedHeader;
 use jsonwebtoken::{DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
 
-use crate::portal_id::PortalId;
+use portal_types::PortalId;
 
 /// Claims that we use to form a JWT.
 ///

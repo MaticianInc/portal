@@ -7,11 +7,11 @@ use axum::response::IntoResponse;
 use axum::Extension;
 use axum::{routing::get, Router};
 use dashmap::DashMap;
-use demo_router::auth::{Auth, JwtClaims, Role};
-use demo_router::portal_id::{PortalId, ServiceName};
 use futures_util::StreamExt;
 
+use demo_router::auth::{Auth, JwtClaims, Role};
 use demo_router::monitor::IdleWebSocket;
+use portal_types::{PortalId, ServiceName};
 
 /// This only contains host tunnels that are waiting for a client.
 #[derive(Default)]

@@ -1,11 +1,10 @@
-use portal_id::{PortalId, ServiceName};
+use portal_types::{PortalId, ServiceName};
 use token::Claims;
 use worker::{console_log, event, Env, Headers, Request, Response, RouteContext, Router};
 
 use crate::token::{Role, TokenValidator};
 
 mod durable;
-mod portal_id;
 mod token;
 
 #[event(fetch)]

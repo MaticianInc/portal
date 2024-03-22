@@ -7,7 +7,7 @@ members = [
     "jwt-webcrypto",
     "portal-client",
     "portal-router",
-    "demo-router",
+    "demo-router", "portal-types",
 ]
 
 [workspace.dependencies]

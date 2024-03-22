@@ -1,7 +1,7 @@
 use jwt_webcrypto::{Algorithm, Validator};
 use serde::Deserialize;
 
-use crate::portal_id::PortalId;
+use portal_types::PortalId;
 
 #[derive(Debug, Clone, Copy)]
 pub struct ValidationError;

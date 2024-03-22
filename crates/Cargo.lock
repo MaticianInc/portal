@@ -397,6 +397,7 @@ dependencies = [
  "dashmap",
  "futures-util",
  "jsonwebtoken",
+ "portal-types",
  "serde",
  "thiserror",
  "tokio",
@@ -1062,6 +1063,7 @@ dependencies = [
  "futures",
  "js-sys",
  "jwt-webcrypto",
+ "portal-types",
  "serde",
  "serde_json",
  "thiserror",
@@ -1070,6 +1072,14 @@ dependencies = [
  "web-sys",
  "worker",
  "worker-sys",
+]
+
+[[package]]
+name = "portal-types"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "thiserror",
 ]
 
 [[package]]
