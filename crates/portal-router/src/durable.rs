@@ -64,7 +64,6 @@ impl DurableObject for DurableRouter {
         _reason: String,
         _was_clean: bool,
     ) -> worker::Result<()> {
-        console_log!("websocket_close");
         // We don't care which websocket closed; we want to destroy all state.
         let sockets = self.state.get_websockets();
         for socket in sockets {
@@ -79,7 +78,12 @@ impl DurableObject for DurableRouter {
         _ws: WebSocket,
         _error: worker::Error,
     ) -> worker::Result<()> {
-        console_log!("websocket_error");
+        // We don't care which websocket closed; we want to destroy all state.
+        let sockets = self.state.get_websockets();
+        for socket in sockets {
+            // We don't supply a code or reason. We don't care if the close fails.
+            let _ = socket.close(None, None::<&str>);
+        }
         Ok(())
     }
 }
