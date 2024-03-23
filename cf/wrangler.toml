@@ -1,6 +1,6 @@
 name = "portal-router"
 workers_dev = true
-compatibility_date = "2024-01-29"
+compatibility_date = "2024-03-18"
 main = "build/worker/shim.mjs"
 
 [build]
