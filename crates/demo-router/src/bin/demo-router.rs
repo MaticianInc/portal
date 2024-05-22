@@ -67,8 +67,8 @@ async fn main() {
 
     // build our application with a route
     let app = Router::new()
-        .route("/connect/host/:id/:service", get(connect_host))
-        .route("/connect/client/:id/:service", get(connect_client))
+        .route("/connect/host/:service", get(connect_host))
+        .route("/connect/client/:service", get(connect_client))
         .layer(Extension(auth))
         .with_state(state);
 
@@ -80,13 +80,14 @@ async fn main() {
 
 async fn connect_host(
     State(state): State<Arc<WaitingTunnels>>,
-    Path((portal_id, service_name)): Path<(PortalId, ServiceName)>,
+    Path(service_name): Path<ServiceName>,
     auth_claims: Claims,
     ws: WebSocketUpgrade,
 ) -> impl IntoResponse {
-    if let Err(status_code) = auth_claims.check(Role::Host, portal_id) {
+    if let Err(status_code) = auth_claims.check(Role::Host) {
         return status_code.into_response();
     }
+    let portal_id = auth_claims.portal_id;
 
     tracing::debug!("connect_host {portal_id}:{service_name}");
 
@@ -97,13 +98,14 @@ async fn connect_host(
 
 async fn connect_client(
     State(state): State<Arc<WaitingTunnels>>,
-    Path((portal_id, service_name)): Path<(PortalId, ServiceName)>,
+    Path(service_name): Path<ServiceName>,
     auth_claims: Claims,
     ws: WebSocketUpgrade,
 ) -> impl IntoResponse {
-    if let Err(status_code) = auth_claims.check(Role::Client, portal_id) {
+    if let Err(status_code) = auth_claims.check(Role::Client) {
         return status_code.into_response();
     }
+    let portal_id = auth_claims.portal_id;
 
     tracing::debug!(
         "connect_client {} {portal_id}:{service_name}",

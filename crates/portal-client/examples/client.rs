@@ -15,10 +15,6 @@ struct Arguments {
     #[arg(long, default_value = "ws://localhost:3000")]
     server: String,
 
-    /// The portal identifier
-    #[arg(long, default_value = "1234")]
-    portal_id: u64,
-
     /// The service name
     #[arg(long, default_value = "echo")]
     service: String,
@@ -34,7 +30,6 @@ async fn run_client(args: &Arguments) -> anyhow::Result<()> {
     let mut tunnel = service
         .tunnel_client(
             args.auth_token.as_deref().unwrap_or_default(),
-            args.portal_id,
             &args.service,
         )
         .await

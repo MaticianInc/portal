@@ -38,10 +38,6 @@ struct PortalParams {
     #[arg(long)]
     auth_token: Option<String>,
 
-    /// The portal identifier
-    #[arg(long, default_value = "1234")]
-    portal_id: u64,
-
     /// The service name
     #[arg(long, default_value = "")]
     service: String,
@@ -169,7 +165,7 @@ async fn forwarding_host(
 
     let auth_token = portal_params.auth_token.as_deref().unwrap_or_default();
     let mut tunnel = service
-        .tunnel_host(auth_token, portal_params.portal_id, &portal_params.service)
+        .tunnel_host(auth_token, &portal_params.service)
         .await
         // FIXME: we should distinguish between authentication errors
         // and network errors; the former should not be retried.
@@ -262,7 +258,7 @@ async fn client_connection(
     // Connect to the tunnel.
     let auth_token = portal_params.auth_token.as_deref().unwrap_or_default();
     let tunnel = service
-        .tunnel_client(auth_token, portal_params.portal_id, &portal_params.service)
+        .tunnel_client(auth_token, &portal_params.service)
         .await
         // FIXME: we should distinguish between authentication errors
         // and network errors; the former should not be retried.

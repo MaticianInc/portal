@@ -9,7 +9,7 @@ use axum_extra::headers::Authorization;
 use axum_extra::TypedHeader;
 use jsonwebtoken::{DecodingKey, Validation};
 
-use portal_types::{JwtClaims, PortalId, Role};
+use portal_types::{JwtClaims, Role};
 
 /// A wrapper around `JwtClaims` so we can impl additional methods and traits.
 pub struct Claims(JwtClaims);
@@ -23,16 +23,9 @@ impl Deref for Claims {
 }
 
 impl Claims {
-    pub fn check(&self, role: Role, portal_id: PortalId) -> Result<(), StatusCode> {
+    pub fn check(&self, role: Role) -> Result<(), StatusCode> {
         if self.0.role != role {
             tracing::error!("{} does not have role {:?}", self.0.sub, role);
-            return Err(StatusCode::UNAUTHORIZED);
-        }
-        if self.0.portal_id != portal_id {
-            tracing::error!(
-                "client {} does not have permission to access tunnel {portal_id}",
-                self.0.sub
-            );
             return Err(StatusCode::UNAUTHORIZED);
         }
         Ok(())

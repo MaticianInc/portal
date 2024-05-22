@@ -13,8 +13,8 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> worker::Resu
 
     let router = Router::new();
     router
-        .get_async("/connect/host/:id/:service", tunnel_host)
-        .get_async("/connect/client/:id/:service", tunnel_client)
+        .get_async("/connect/host/:service", tunnel_host)
+        .get_async("/connect/client/:service", tunnel_client)
         .run(req, env)
         .await
 }
@@ -66,12 +66,10 @@ async fn check_authorization(
 }
 
 /// Extract the parameters from the URL.
-fn get_url_params(ctx: &RouteContext<()>) -> Option<(PortalId, ServiceName)> {
-    let id = ctx.param("id")?;
-    let id = id.parse::<PortalId>().ok()?;
+fn get_url_params(ctx: &RouteContext<()>) -> Option<ServiceName> {
     let service = ctx.param("service")?;
     let service = service.to_owned().try_into().ok()?;
-    Some((id, service))
+    Some(service)
 }
 
 /// Render the portal ID and service name as a single string, to serve as a unique identifier.
@@ -87,15 +85,11 @@ async fn tunnel_host(req: Request, ctx: RouteContext<()>) -> worker::Result<Resp
         Ok(claims) => claims,
     };
     // Extract the URL parameters.
-    let Some((portal_id, service_name)) = get_url_params(&ctx) else {
+    let Some(service_name) = get_url_params(&ctx) else {
         return Error::MalformedRequest.into_response();
     };
-    // Verify that the token allows access to this portal id.
-    if claims.portal_id != portal_id {
-        console_log!("host {} incorrect portal id: token {} requested {}", claims.sub, claims.portal_id, portal_id);
-        return Error::Unauthorized.into_response();
-    }
 
+    let portal_id = claims.portal_id;
     console_log!("host connect to {portal_id}:{service_name}");
 
     let namespace = ctx.durable_object("TUNNEL")?;
@@ -113,15 +107,11 @@ async fn tunnel_client(req: Request, ctx: RouteContext<()>) -> worker::Result<Re
         Ok(claims) => claims,
     };
     // Extract the URL parameters.
-    let Some((portal_id, service_name)) = get_url_params(&ctx) else {
+    let Some(service_name) = get_url_params(&ctx) else {
         return Error::MalformedRequest.into_response();
     };
-    // Verify that the token allows access to this portal id.
-    if claims.portal_id != portal_id {
-        console_log!("client {} incorrect portal id: token {} requested {}", claims.sub, claims.portal_id, portal_id);
-        return Error::Unauthorized.into_response();
-    }
 
+    let portal_id = claims.portal_id;
     console_log!("client connect to {portal_id}:{service_name}");
 
     let namespace = ctx.durable_object("TUNNEL")?;
