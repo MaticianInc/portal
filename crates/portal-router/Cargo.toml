@@ -17,7 +17,6 @@ portal-types.path = "../portal-types"
 
 async-trait.workspace = true
 console_error_panic_hook = { workspace = true, optional = true }
-futures.workspace = true
 js-sys.workspace = true
 jwt-webcrypto.workspace = true
 serde.workspace = true
