@@ -23,6 +23,7 @@ pub struct StreamError;
 #[error("portal sink error")]
 pub struct SinkError;
 
+#[derive(Clone, Debug)]
 pub struct PortalService {
     url: Url,
 }
