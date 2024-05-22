@@ -69,11 +69,11 @@ where
 /// Add this to the axum router by calling:
 /// ```
 /// # use std::sync::Arc;
-/// # use demo_router::auth::{Auth, JwtClaims};
+/// # use demo_router::auth::{Auth, Claims};
 /// # use axum::{Extension, Router, extract::State, routing::get};
 /// # let secret = "secret";
 ///
-/// # async fn needs_auth(_claims: JwtClaims, _: State<()>) {}
+/// # async fn needs_auth(_claims: Claims, _state: State<()>) {}
 ///
 /// let auth = Arc::new(Auth::new(secret));
 ///
