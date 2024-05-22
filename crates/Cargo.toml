@@ -1,5 +1,5 @@
 [workspace.package]
-rust-version = "1.69.0"
+rust-version = "1.70.0"
 
 [workspace]
 resolver = "2"

@@ -120,6 +120,6 @@ static TIMESTAMP_BASE: OnceLock<Instant> = OnceLock::new();
 
 /// Get a monotonic timestamp, in f64 seconds.
 fn get_timestamp() -> f64 {
-    let base = TIMESTAMP_BASE.get_or_init(|| Instant::now());
+    let base = TIMESTAMP_BASE.get_or_init(Instant::now);
     base.elapsed().as_secs_f64()
 }

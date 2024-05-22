@@ -146,10 +146,10 @@ impl Validator {
         let header = b64decode(header.as_bytes()).map_err(|_| ValidateFailure::MalformedToken)?;
         let payload = b64decode(payload.as_bytes()).map_err(|_| ValidateFailure::MalformedToken)?;
         // mutable for no good reason? https://github.com/rustwasm/wasm-bindgen/issues/3795
-        let mut signature =
+        let signature =
             b64decode(signature.as_bytes()).map_err(|_| ValidateFailure::MalformedToken)?;
 
-        let mut message = header_payload.as_bytes().to_owned();
+        let message = header_payload.as_bytes().to_owned();
 
         let alg_obj: js_sys::Object = match self.algorithm {
             Algorithm::HS256 => JsValue::from("HMAC").into(),
@@ -159,12 +159,7 @@ impl Validator {
         let promise = self
             .crypto
             .subtle()
-            .verify_with_object_and_u8_array_and_u8_array(
-                &alg_obj,
-                &self.key,
-                &mut signature,
-                &mut message,
-            )
+            .verify_with_object_and_u8_array_and_u8_array(&alg_obj, &self.key, &signature, &message)
             .map_err(|_| ValidateFailure::Invalid)?;
 
         let valid = JsFuture::from(promise)
