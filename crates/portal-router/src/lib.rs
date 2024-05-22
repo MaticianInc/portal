@@ -92,7 +92,7 @@ async fn tunnel_host(req: Request, ctx: RouteContext<()>) -> worker::Result<Resp
     };
     // Verify that the token allows access to this portal id.
     if claims.portal_id != portal_id {
-        console_log!("host {} incorrect portal id", claims.sub);
+        console_log!("host {} incorrect portal id: token {} requested {}", claims.sub, claims.portal_id, portal_id);
         return Error::Unauthorized.into_response();
     }
 
@@ -118,7 +118,7 @@ async fn tunnel_client(req: Request, ctx: RouteContext<()>) -> worker::Result<Re
     };
     // Verify that the token allows access to this portal id.
     if claims.portal_id != portal_id {
-        console_log!("client {} incorrect portal id", claims.sub);
+        console_log!("client {} incorrect portal id: token {} requested {}", claims.sub, claims.portal_id, portal_id);
         return Error::Unauthorized.into_response();
     }
 
