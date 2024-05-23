@@ -1,3 +1,5 @@
+//! A sample client.
+
 use std::borrow::Cow;
 use std::sync::OnceLock;
 use std::time::Instant;

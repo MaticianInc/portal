@@ -1,3 +1,5 @@
+//! A client for the portal service.
+
 use std::pin::Pin;
 use std::sync::OnceLock;
 use std::task::{Context, Poll};
@@ -11,18 +13,22 @@ use tokio_tungstenite::tungstenite::Error as WsError;
 use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
 use url::Url;
 
+/// An malformed URL was passed to `PortalService::new()`
 #[derive(Debug, thiserror::Error)]
 #[error("bad service url")]
 pub struct UrlError;
 
+/// An error on the portal network downstream connection.
 #[derive(Debug, thiserror::Error)]
 #[error("portal stream error")]
 pub struct StreamError;
 
+/// An error on the portal network upstream connection.
 #[derive(Debug, thiserror::Error)]
 #[error("portal sink error")]
 pub struct SinkError;
 
+/// An object representing the portal service we want to connect to.
 #[derive(Clone, Debug)]
 pub struct PortalService {
     url: Url,
@@ -71,6 +77,7 @@ type TcpWebSocket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
 use pin_project::pin_project;
 
+/// A live connection to the portal service.
 #[pin_project(project_replace)]
 pub struct TunnelSocket {
     #[pin]
@@ -154,9 +161,9 @@ async fn websocket_connect(url: &str, token: &str) -> Result<TcpWebSocket, WsErr
         "authorization",
         format!("Bearer {}", token).parse().unwrap(),
     );
-    let (bot_websocket, http_response) = connect_async(request).await?;
+    let (websocket, http_response) = connect_async(request).await?;
     tracing::debug!("got http response: {http_response:?}");
-    Ok(bot_websocket)
+    Ok(websocket)
 }
 
 static TIMESTAMP_BASE: OnceLock<Instant> = OnceLock::new();

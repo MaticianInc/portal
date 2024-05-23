@@ -1,3 +1,5 @@
+//! An example of TCP port forwarding via the portal service.
+
 use std::time::Duration;
 
 use anyhow::{anyhow, Context};

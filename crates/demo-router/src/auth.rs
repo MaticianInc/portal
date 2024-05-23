@@ -89,12 +89,8 @@ pub struct Auth {
 impl Auth {
     /// Create a new instance of the authentication service.
     ///
-    /// This service handles the creation and verification of JWT tokens
+    /// This service handles the verification of JWT tokens
     /// to be used with the "authorization: Bearer" http header.
-    ///
-    /// It also implements authentication from a client certificate (for bots)
-    /// and will (TODO) implement openid authentication for humans.
-    ///
     pub fn new(secret: &str) -> Self {
         let decoding_key = DecodingKey::from_secret(secret.as_bytes());
 

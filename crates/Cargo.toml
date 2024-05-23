@@ -1,5 +1,6 @@
 [workspace.package]
 rust-version = "1.70.0"
+repository = "https://github.com/MaticianInc/portal"
 
 [workspace]
 resolver = "2"
@@ -34,6 +35,7 @@ tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 tokio = { version = "1.36.0", features = ["macros", "net", "rt-multi-thread", "io-std", "sync"] }
 tokio-stream = "0.1.14"
 tokio-tungstenite = {version = "0.21.0", features = ["rustls-tls-native-roots"] }
+tokio-util = { version = "0.7.10", features = ["io"] }
 url = "2.5.0"
 wasm-bindgen = "0.2.86"
 wasm-bindgen-futures = "0.4.40"

@@ -1,3 +1,5 @@
+//! A sample host.
+
 use std::borrow::Cow;
 
 use anyhow::Context;
