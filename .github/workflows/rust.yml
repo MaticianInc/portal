@@ -1,0 +1,69 @@
+name: rust checks
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  check:
+    name: cargo check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@1.76.0
+
+      - name: Run cargo check
+        working-directory: crates
+        run: cargo check --all-targets --all-features
+
+  test:
+    name: cargo test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@1.76.0
+
+      - name: Run cargo test --all-features
+        working-directory: crates
+        run: cargo test
+
+  fmt:
+    name: cargo fmt
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@1.76.0
+        with:
+          components: rustfmt
+
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Run cargo fmt
+        working-directory: crates
+        run: cargo fmt --all -- --check
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@1.76.0
+        with:
+          components: clippy
+
+      - name: Run cargo clippy
+        working-directory: crates
+        run: cargo clippy --all-targets --all-features -- -D warnings
