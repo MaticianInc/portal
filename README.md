@@ -3,8 +3,9 @@
 This provides a toolkit for securely making connections between two computers anywhere in the world.
 
 The service is made up of 3 components:
-- Router: a cloud service that routes traffic between a host and a client
+- Router: a cloud service that routes traffic between a host and a client.
 - Host: a program that wants to allow clients to connect remotely.
+- Client: a program that wants to connect to a host.
 
 A connection to the router uses a websocket over https. So the connection between the host and router
 and the connection between the client and router are secured by TLS. It is recommended that the tunnelled
@@ -53,7 +54,7 @@ $ cargo run --example make-token -- --role host --portal-id 1234 --secret <secre
 
 Run the echo host:
 ```txt
-$ RUST_LOG=debug cargo run --example host -- --portal-id 1234 --server ws://localhost:8787
+$ RUST_LOG=debug cargo run --example host -- --server ws://localhost:8787
 ```
 
 Repeat for the echo client:
@@ -63,7 +64,7 @@ $ cargo run --example make-token -- --role client --portal-id 1234 --secret <sec
 
 Run the echo client:
 ```txt
-$ RUST_LOG=debug cargo run --example client -- --portal-id 1234 --server ws://localhost:8787
+$ RUST_LOG=debug cargo run --example client -- --server ws://localhost:8787
 ```
 
 #### Running the TCP forwarding host and client
@@ -72,12 +73,12 @@ Create a host and client token as above. Then run the host and client as follows
 
 Run a host that offers to tunnel connections to `myserver` port 80:
 ```txt
-RUST_LOG=debug cargo run --example tcp-forward -- --server ws://localhost:8787 --portal-id 1234 --service my_tcp_service --reconnect host --target-host myserver --target-port 80
+RUST_LOG=debug cargo run --example tcp-forward -- --server ws://localhost:8787 --service my_tcp_service --reconnect host --target-host myserver --target-port 80
 ```
 
 Run a client that opens a local port 8000 and proxies data through the tunnel.
 ```txt
-RUST_LOG=debug cargo run --example tcp-forward -- --server ws://localhost:8787 --portal-id 1234 --service my_tcp_service --reconnect client --port 8000
+RUST_LOG=debug cargo run --example tcp-forward -- --server ws://localhost:8787 --service my_tcp_service --reconnect client --port 8000
 ```
 
 ### Deploying to CloudFlare
