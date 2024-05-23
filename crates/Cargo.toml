@@ -41,7 +41,7 @@ wasm-bindgen = "0.2.86"
 wasm-bindgen-futures = "0.4.40"
 wasm-bindgen-test = "0.3.40"
 web-sys = { version = "0.3.67", features = ["Crypto", "CryptoKey", "SubtleCrypto", "HmacImportParams", "EcKeyImportParams", "EcdsaParams", "Window", "console"] }
-worker = { git = "https://github.com/eric-seppanen/workers-rs.git", branch = "local2" }
-worker-sys = { git = "https://github.com/eric-seppanen/workers-rs.git", branch = "local2" }
+worker = "0.3.0"
+worker-sys = "0.3.0"
 
 jwt-webcrypto = { path = "jwt-webcrypto" }
