@@ -26,7 +26,6 @@ missing_docs = "warn"
 unsafe_code = "deny"
 
 [lints.clippy]
-cargo_common_metadata = "warn"
 mem_forget = "warn"
 get_unwrap = "warn"
 cast_lossless = "warn"
