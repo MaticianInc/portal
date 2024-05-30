@@ -5,7 +5,8 @@ use std::sync::OnceLock;
 use std::task::{Context, Poll};
 use std::time::Instant;
 
-use futures_util::{Sink, Stream};
+use futures_util::{Sink, Stream, StreamExt as _};
+use portal_types::{ControlMessage, Nexus};
 use tokio::net::TcpStream;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::protocol::Message;
@@ -42,9 +43,15 @@ impl PortalService {
         Ok(Self { url })
     }
 
-    fn host_url(&self, service: &str) -> Url {
+    fn host_url(&self) -> Url {
         let mut url = self.url.clone();
-        url.set_path(&format!("/connect/host/{service}"));
+        url.set_path("/connect/host_control");
+        url
+    }
+
+    fn host_accept_url(&self, nexus: Nexus) -> Url {
+        let mut url = self.url.clone();
+        url.set_path(&format!("/connect/host_accept/{}", nexus.raw_id()));
         url
     }
 
@@ -54,22 +61,132 @@ impl PortalService {
         url
     }
 
-    /// Create a host connection to the tunnel service.
-    pub async fn tunnel_host(&self, token: &str, service: &str) -> Result<TunnelSocket, WsError> {
-        let url = self.host_url(service);
+    /// Make a host connection to the service.
+    pub async fn tunnel_host(&self, token: &str) -> Result<TunnelHost, WsError> {
+        let url = self.host_url();
         tracing::debug!("tunnel_host {url}");
+        let ws = websocket_connect(url.as_str(), token).await?;
+
+        Ok(TunnelHost {
+            service: self.clone(),
+            ws,
+        })
+    }
+
+    /// Accept an incoming client connection.
+    async fn accept_connection(&self, token: &str, nexus: Nexus) -> Result<TunnelSocket, WsError> {
+        let url = self.host_accept_url(nexus);
+        tracing::debug!("accept_connection {url}");
         let ws = websocket_connect(url.as_str(), token).await?;
 
         Ok(TunnelSocket { ws })
     }
 
-    /// Create a client connection to the tunnel service.
+    /// Create a client connection to the portal service.
     pub async fn tunnel_client(&self, token: &str, service: &str) -> Result<TunnelSocket, WsError> {
         let url = self.client_url(service);
         tracing::debug!("tunnel_client {url}");
-        let ws = websocket_connect(url.as_str(), token).await?;
+        let mut ws = websocket_connect(url.as_str(), token).await?;
+
+        // A client must wait for a Connected message before it is allowed to transmit.
+        // FIXME: add a built-in timeout here, so that naive callers won't wait forever.
+        // FIXME: break out "wait for control message" into a separate function.
+        while let Some(Ok(message)) = ws.next().await {
+            match message {
+                Message::Text(txt_msg) => {
+                    let Ok(control_message) = serde_json::from_str::<ControlMessage>(&txt_msg)
+                    else {
+                        tracing::warn!("malformed control message");
+                        continue;
+                    };
+                    if matches!(control_message, ControlMessage::Connected) {
+                        return Ok(TunnelSocket { ws });
+                    }
+                }
+                Message::Binary(_) => {
+                    // We expect that the Connected message should happen before
+                    // the host sends data. If this happens that message will not
+                    // be delivered to the client because the TunnelSocket doesn't
+                    // exist yet, so we will drop the connection.
+                    tracing::error!("received binary message before Connected");
+                    // FIXME: we should use our own error type instead of abusing io::Error.
+                    Err(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        "portal protocol error",
+                    ))?;
+                }
+                // Ignore all other message types.
+                _ => {}
+            }
+        }
 
         Ok(TunnelSocket { ws })
+    }
+}
+
+/// A host control connection to the portal service.
+pub struct TunnelHost {
+    service: PortalService,
+    ws: TcpWebSocket,
+}
+
+impl TunnelHost {
+    /// Wait for a client to connect.
+    pub async fn next_client(&mut self) -> Option<IncomingClient> {
+        while let Some(Ok(message)) = self.ws.next().await {
+            match message {
+                Message::Text(txt_msg) => {
+                    let Ok(control_message) = serde_json::from_str::<ControlMessage>(&txt_msg)
+                    else {
+                        tracing::warn!("malformed control message");
+                        continue;
+                    };
+                    if matches!(control_message, ControlMessage::Incoming { .. }) {
+                        return Some(IncomingClient::new(self.service.clone(), control_message));
+                    }
+                }
+                Message::Binary(_) => {
+                    tracing::warn!("ignoring binary message on host control socket");
+                }
+                // Ignore all other message types.
+                _ => {}
+            }
+        }
+        None
+    }
+}
+
+/// An incoming client connection.
+pub struct IncomingClient {
+    service: PortalService,
+    control_message: ControlMessage,
+}
+
+impl IncomingClient {
+    fn new(service: PortalService, control_message: ControlMessage) -> Self {
+        assert!(matches!(control_message, ControlMessage::Incoming { .. }));
+        Self {
+            service,
+            control_message,
+        }
+    }
+
+    /// Return the service name requested by the client.
+    ///
+    // FIXME: use ServiceName type instead.
+    pub fn service_name(&self) -> &str {
+        let ControlMessage::Incoming { service_name, .. } = &self.control_message else {
+            panic!("IncomingClient wrong control_message variant");
+        };
+        service_name
+    }
+
+    /// Accept this connection by connecting a data socket to the client.
+    pub async fn connect(self, token: &str) -> Result<TunnelSocket, WsError> {
+        let ControlMessage::Incoming { nexus, .. } = self.control_message else {
+            panic!("IncomingClient wrong control_message variant");
+        };
+        self.service.accept_connection(token, nexus).await
     }
 }
 
@@ -77,7 +194,7 @@ type TcpWebSocket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
 use pin_project::pin_project;
 
-/// A live connection to the portal service.
+/// A data connection to the portal service.
 #[pin_project(project_replace)]
 pub struct TunnelSocket {
     #[pin]

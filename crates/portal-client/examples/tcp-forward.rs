@@ -5,7 +5,7 @@ use std::time::Duration;
 use anyhow::{anyhow, Context};
 use clap::{Parser, Subcommand};
 use futures_util::{Sink, SinkExt as _, Stream, StreamExt as _};
-use portal_client::PortalService;
+use portal_client::{IncomingClient, PortalService};
 use tokio::io::AsyncWriteExt as _;
 use tokio::net::{TcpListener, TcpStream};
 use tracing_subscriber::EnvFilter;
@@ -34,7 +34,7 @@ enum ForwardingMode {
     Client(ClientParams),
 }
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Clone, Parser)]
 struct PortalParams {
     /// Tunnel service auth token
     #[arg(long)]
@@ -49,7 +49,7 @@ struct PortalParams {
     reconnect: bool,
 }
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Clone, Parser)]
 struct HostParams {
     /// Port to forward
     #[arg(long, default_value = "localhost")]
@@ -156,22 +156,66 @@ async fn run_host(
     }
 }
 
-/// Make a host connection to the portal service.
+/// Make the host control connection to the portal service.
 async fn forwarding_host(
     service: &PortalService,
     portal_params: &PortalParams,
     params: &HostParams,
 ) -> Result<(), ForwardError> {
-    let host_port = format!("{}:{}", params.target_host, params.target_port);
-    tracing::info!("running forwarding host (target: {})", host_port);
+    tracing::info!("running forwarding host");
 
     let auth_token = portal_params.auth_token.as_deref().unwrap_or_default();
-    let mut tunnel = service
-        .tunnel_host(auth_token, &portal_params.service)
+    let mut tunnel_host = service
+        .tunnel_host(auth_token)
         .await
         // FIXME: we should distinguish between authentication errors
         // and network errors; the former should not be retried.
         .map_err(|e| ForwardError::Connect(e.into()))?;
+
+    // wait for the next incoming client connection.
+    while let Some(incoming_client) = tunnel_host.next_client().await {
+        let service_name = incoming_client.service_name();
+        let port = match service_name.strip_prefix("port") {
+            Some(port) => match port.parse::<u16>() {
+                Ok(port) => port,
+                Err(_) => {
+                    tracing::info!("bad port number in service name {service_name}");
+                    continue;
+                }
+            },
+            None => {
+                tracing::info!("unrecognized service name {service_name}");
+                continue;
+            }
+        };
+
+        // Handle the I/O forwarding in a separate task.
+        tokio::spawn(forwarding_host_one(
+            incoming_client,
+            portal_params.clone(),
+            params.clone(),
+            port,
+        ));
+    }
+
+    tracing::info!("forwarding host exiting");
+    Ok(())
+}
+
+/// Handle a single forwarded connection.
+async fn forwarding_host_one(
+    incoming_client: IncomingClient,
+    portal_params: PortalParams,
+    params: HostParams,
+    port: u16,
+) -> Result<(), ForwardError> {
+    let auth_token = portal_params.auth_token.as_deref().unwrap_or_default();
+    let mut tunnel = incoming_client
+        .connect(auth_token)
+        .await
+        .map_err(|e| ForwardError::Connect(e.into()))?;
+
+    let host_port = format!("{}:{}", params.target_host, port);
 
     // Wait for the first forwarded bytes to arrive before creating the local TCP connection.
     //

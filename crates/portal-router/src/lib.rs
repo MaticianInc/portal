@@ -1,6 +1,6 @@
 use worker::{console_log, event, Env, Headers, Request, Response, RouteContext, Router};
 
-use portal_types::{JwtClaims, PortalId, Role, ServiceName};
+use portal_types::{JwtClaims, Role, ServiceName};
 
 use crate::token::TokenValidator;
 
@@ -13,8 +13,9 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> worker::Resu
 
     let router = Router::new();
     router
-        .get_async("/connect/host/:service", tunnel_host)
-        .get_async("/connect/client/:service", tunnel_client)
+        .get_async("/connect/host_control", host_connect)
+        .get_async("/connect/host_accept/:nexus", host_connect)
+        .get_async("/connect/client/:service", client_connect)
         .run(req, env)
         .await
 }
@@ -72,35 +73,31 @@ fn get_url_params(ctx: &RouteContext<()>) -> Option<ServiceName> {
     Some(service)
 }
 
-/// Render the portal ID and service name as a single string, to serve as a unique identifier.
-fn tunnel_identifier(portal_id: PortalId, service_name: &ServiceName) -> String {
-    format!("{portal_id}:{service_name}")
-}
-
-/// Handle incoming connection by tunnel host.
-async fn tunnel_host(req: Request, ctx: RouteContext<()>) -> worker::Result<Response> {
+/// Handle incoming host connections.
+///
+/// This can handle host control connections as well as host data connections. It
+/// performs authentication checks and then forwards the request to the durable
+/// object handling this portal id.
+///
+async fn host_connect(req: Request, ctx: RouteContext<()>) -> worker::Result<Response> {
     // Check authorization
     let claims = match check_authorization(&ctx, &req, Role::Host).await {
         Err(e) => return e.into_response(),
         Ok(claims) => claims,
     };
-    // Extract the URL parameters.
-    let Some(service_name) = get_url_params(&ctx) else {
-        return Error::MalformedRequest.into_response();
-    };
 
     let portal_id = claims.portal_id;
-    console_log!("host connect to {portal_id}:{service_name}");
+    console_log!("host connect to {portal_id}");
 
     let namespace = ctx.durable_object("TUNNEL")?;
 
-    let id = namespace.id_from_name(&tunnel_identifier(portal_id, &service_name))?;
+    let id = namespace.id_from_name(&portal_id.to_string())?;
     let stub = id.get_stub()?;
     stub.fetch_with_request(req).await
 }
 
 /// Handle incoming connection by tunnel client.
-async fn tunnel_client(req: Request, ctx: RouteContext<()>) -> worker::Result<Response> {
+async fn client_connect(req: Request, ctx: RouteContext<()>) -> worker::Result<Response> {
     // Check authorization
     let claims = match check_authorization(&ctx, &req, Role::Client).await {
         Err(e) => return e.into_response(),
@@ -115,7 +112,7 @@ async fn tunnel_client(req: Request, ctx: RouteContext<()>) -> worker::Result<Re
     console_log!("client connect to {portal_id}:{service_name}");
 
     let namespace = ctx.durable_object("TUNNEL")?;
-    let id = namespace.id_from_name(&tunnel_identifier(portal_id, &service_name))?;
+    let id = namespace.id_from_name(&portal_id.to_string())?;
     let stub = id.get_stub()?;
     stub.fetch_with_request(req).await
 }

@@ -5,10 +5,10 @@ use std::borrow::Cow;
 use anyhow::Context;
 use clap::Parser;
 use futures_util::{SinkExt, StreamExt};
-use portal_client::PortalService;
+use portal_client::{IncomingClient, PortalService};
 use tracing_subscriber::EnvFilter;
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Clone, Parser)]
 struct Arguments {
     /// Server base URL
     #[arg(long, default_value = "ws://localhost:3000")]
@@ -31,20 +31,24 @@ async fn run_host(args: &Arguments) -> anyhow::Result<()> {
     tracing::info!("running echo host");
     let service = PortalService::new(&args.server)?;
     let mut tunnel = service
-        .tunnel_host(
-            args.auth_token.as_deref().unwrap_or_default(),
-            &args.service,
-        )
+        .tunnel_host(args.auth_token.as_deref().unwrap_or_default())
         .await
         .context("failed to connect to server")?;
 
     loop {
-        let message = tunnel
-            .next()
+        let client = tunnel
+            .next_client()
             .await
-            .context("websocket closed")?
-            .context("error on websocket stream")?; // misc. network error
+            .context("host control websocket ended")?;
 
+        tokio::spawn(handle_connection(args.clone(), client));
+    }
+}
+
+async fn handle_connection(args: Arguments, client: IncomingClient) -> anyhow::Result<()> {
+    let mut tunnel = client.connect(args.auth_token.as_deref().unwrap()).await?;
+
+    while let Some(Ok(message)) = tunnel.next().await {
         let printable_message = match std::str::from_utf8(&message) {
             Ok(text) => Cow::from(text),
             Err(_) => Cow::from(format!("binary message ({} bytes)", message.len())),
@@ -54,6 +58,9 @@ async fn run_host(args: &Arguments) -> anyhow::Result<()> {
         // Send the message back to the client
         tunnel.send(message).await?;
     }
+
+    tracing::info!("connection ended");
+    Ok(())
 }
 
 #[tokio::main]
@@ -65,6 +72,8 @@ async fn main() {
         if let Some(env_token) = option_env!("PORTAL_TOKEN") {
             args.auth_token = Some(env_token.to_owned());
             tracing::debug!("using auth token in $PORTAL_TOKEN");
+        } else {
+            panic!("no auth token");
         }
     }
 

@@ -3,6 +3,10 @@ use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 
+/// A portal identifier.
+///
+/// Each `PortalId` identifies a unique host control connection.
+/// Host and client tokens grant access to a specific portal id.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct PortalId(u64);
@@ -33,8 +37,12 @@ impl Display for PortalId {
 #[error("improper service name")]
 pub struct BadServiceName;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize)]
-#[serde(try_from = "String")]
+/// A service name.
+///
+/// Service names may be requested by a portal client, and the host
+/// may choose to accept connections to that service.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
 pub struct ServiceName(String);
 
 impl TryFrom<String> for ServiceName {
@@ -51,6 +59,12 @@ impl TryFrom<String> for ServiceName {
             }
         }
         Ok(ServiceName(name))
+    }
+}
+
+impl From<ServiceName> for String {
+    fn from(name: ServiceName) -> Self {
+        name.0
     }
 }
 

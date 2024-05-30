@@ -10,7 +10,7 @@ pub struct TokenValidator {
 
 impl TokenValidator {
     pub async fn new(secret: &[u8]) -> Self {
-        let crypto = crypto_hack::crypto();
+        let crypto = worker_global::crypto();
 
         let validator = jwt_webcrypto::Validator::new(crypto, Algorithm::HS256, secret)
             .await
@@ -33,7 +33,7 @@ impl TokenValidator {
 // Workers don't access the WebCrypto API the same way as browsers.
 // So we need to help ourselves via the global environment.
 // See also https://github.com/cloudflare/workers-rs/pull/471
-mod crypto_hack {
+pub mod worker_global {
     use wasm_bindgen::JsCast;
 
     pub fn crypto() -> web_sys::Crypto {

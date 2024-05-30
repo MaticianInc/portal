@@ -19,6 +19,7 @@ pub struct JwtClaims {
     pub portal_id: PortalId,
 }
 
+/// A role that defines a token holder as a host or client.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Role {

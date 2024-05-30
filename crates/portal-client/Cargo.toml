@@ -7,9 +7,12 @@ rust-version.workspace = true
 repository.workspace = true
 
 [dependencies]
+portal-types = { version = "0.1", path = "../portal-types" }
+
 anyhow.workspace = true
 pin-project.workspace = true
 futures-util.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 tokio.workspace = true
