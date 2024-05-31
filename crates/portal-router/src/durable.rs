@@ -1,7 +1,7 @@
 use std::fmt::Display;
 use std::str::FromStr;
 
-use portal_types::{ControlMessage, Nexus, NexusParseError};
+use matic_portal_types::{ControlMessage, Nexus, NexusParseError};
 use worker::{
     console_log, durable_object, Env, Request, Response, State, WebSocket,
     WebSocketIncomingMessage, WebSocketPair,

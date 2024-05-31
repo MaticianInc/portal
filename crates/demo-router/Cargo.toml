@@ -6,7 +6,7 @@ license = "Apache-2.0"
 rust-version.workspace = true
 
 [dependencies]
-portal-types.path = "../portal-types"
+matic-portal-types = { version = "0.1", path = "../portal-types" }
 
 async-trait.workspace = true
 axum.workspace = true

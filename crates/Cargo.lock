@@ -375,7 +375,7 @@ dependencies = [
  "dashmap",
  "futures-util",
  "jsonwebtoken",
- "portal-types",
+ "matic-portal-types",
  "thiserror",
  "tokio",
  "tokio-tungstenite",
@@ -764,6 +764,33 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0e7465ac9959cc2b1404e8e2367b43684a6d13790fe23056cc8c6c5a6b7bcb94"
 
 [[package]]
+name = "matic-portal-client"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "futures-util",
+ "matic-portal-types",
+ "pin-project",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "tokio-tungstenite",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+]
+
+[[package]]
+name = "matic-portal-types"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "thiserror",
+]
+
+[[package]]
 name = "memchr"
 version = "2.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -939,25 +966,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b870d8c151b6f2fb93e84a13146138f05d02ed11c7e7c54f8826aaaf7c9f184"
 
 [[package]]
-name = "portal-client"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "futures-util",
- "pin-project",
- "portal-types",
- "serde_json",
- "thiserror",
- "tokio",
- "tokio-tungstenite",
- "tokio-util",
- "tracing",
- "tracing-subscriber",
- "url",
-]
-
-[[package]]
 name = "portal-router"
 version = "0.1.0"
 dependencies = [
@@ -965,7 +973,7 @@ dependencies = [
  "console_error_panic_hook",
  "js-sys",
  "jwt-webcrypto",
- "portal-types",
+ "matic-portal-types",
  "serde",
  "serde_json",
  "thiserror",
@@ -974,14 +982,6 @@ dependencies = [
  "web-sys",
  "worker",
  "worker-sys",
-]
-
-[[package]]
-name = "portal-types"
-version = "0.1.0"
-dependencies = [
- "serde",
- "thiserror",
 ]
 
 [[package]]

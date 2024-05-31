@@ -11,7 +11,7 @@ use futures_util::StreamExt;
 
 use demo_router::auth::{Auth, Claims};
 use demo_router::monitor::IdleWebSocket;
-use portal_types::{PortalId, Role, ServiceName};
+use matic_portal_types::{PortalId, Role, ServiceName};
 
 /// This only contains host tunnels that are waiting for a client.
 #[derive(Default)]

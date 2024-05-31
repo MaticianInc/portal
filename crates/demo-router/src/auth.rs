@@ -9,7 +9,7 @@ use axum_extra::headers::Authorization;
 use axum_extra::TypedHeader;
 use jsonwebtoken::{DecodingKey, Validation};
 
-use portal_types::{JwtClaims, Role};
+use matic_portal_types::{JwtClaims, Role};
 
 /// A wrapper around `JwtClaims` so we can impl additional methods and traits.
 pub struct Claims(JwtClaims);

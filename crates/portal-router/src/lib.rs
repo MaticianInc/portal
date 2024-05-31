@@ -1,6 +1,6 @@
 use worker::{console_log, event, Env, Headers, Request, Response, RouteContext, Router};
 
-use portal_types::{JwtClaims, Role, ServiceName};
+use matic_portal_types::{JwtClaims, Role, ServiceName};
 
 use crate::token::TokenValidator;
 

@@ -7,7 +7,7 @@ use std::time::Instant;
 use anyhow::{anyhow, bail, Context};
 use clap::Parser;
 use futures_util::{SinkExt, StreamExt};
-use portal_client::PortalService;
+use matic_portal_client::PortalService;
 use tokio::io::AsyncBufReadExt;
 use tracing_subscriber::EnvFilter;
 

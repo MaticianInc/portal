@@ -5,7 +5,7 @@ use std::borrow::Cow;
 use anyhow::Context;
 use clap::Parser;
 use futures_util::{SinkExt, StreamExt};
-use portal_client::{IncomingClient, PortalService};
+use matic_portal_client::{IncomingClient, PortalService};
 use tracing_subscriber::EnvFilter;
 
 #[derive(Debug, Clone, Parser)]

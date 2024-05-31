@@ -1,5 +1,5 @@
 use jwt_webcrypto::{Algorithm, Validator};
-use portal_types::JwtClaims;
+use matic_portal_types::JwtClaims;
 
 #[derive(Debug, Clone, Copy)]
 pub struct ValidationError;

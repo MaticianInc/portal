@@ -5,7 +5,7 @@ use std::time::Duration;
 use anyhow::{anyhow, Context};
 use clap::{Parser, Subcommand};
 use futures_util::{Sink, SinkExt as _, Stream, StreamExt as _};
-use portal_client::{IncomingClient, PortalService};
+use matic_portal_client::{IncomingClient, PortalService};
 use tokio::io::AsyncWriteExt as _;
 use tokio::net::{TcpListener, TcpStream};
 use tracing_subscriber::EnvFilter;

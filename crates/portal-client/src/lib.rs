@@ -6,7 +6,7 @@ use std::task::{Context, Poll};
 use std::time::Instant;
 
 use futures_util::{Sink, Stream, StreamExt as _};
-use portal_types::{ControlMessage, Nexus};
+use matic_portal_types::{ControlMessage, Nexus};
 use tokio::net::TcpStream;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::protocol::Message;

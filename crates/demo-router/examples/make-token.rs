@@ -3,7 +3,7 @@ use std::time::{Duration, SystemTime};
 use clap::Parser;
 
 use jsonwebtoken::{EncodingKey, Header};
-use portal_types::{JwtClaims, Role};
+use matic_portal_types::{JwtClaims, Role};
 
 #[derive(Debug, Parser)]
 struct Arguments {
