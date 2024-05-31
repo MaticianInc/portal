@@ -1,9 +1,11 @@
 [package]
 name = "matic-portal-types"
+description = "Common types for Matic Portal servers and clients"
 version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
-rust-version.workspace = true
+rust-version = "1.70.0"
+repository.workspace = true
 
 [dependencies]
 serde.workspace = true

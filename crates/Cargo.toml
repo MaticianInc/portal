@@ -1,6 +1,6 @@
 [workspace.package]
-rust-version = "1.70.0"
 repository = "https://github.com/MaticianInc/portal"
+authors = ["Eric Seppanen <eric@maticrobots.com>"]
 
 [workspace]
 resolver = "2"
