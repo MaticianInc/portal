@@ -1,1 +1,4 @@
 crates/target
+scripts/
+.wrangler/
+docker/
