@@ -40,7 +40,7 @@ url = "2.4.0"
 wasm-bindgen = "0.2.86"
 wasm-bindgen-futures = "0.4.40"
 wasm-bindgen-test = "0.3.40"
-web-sys = { version = "0.3.67", features = ["Crypto", "CryptoKey", "SubtleCrypto", "HmacImportParams", "EcKeyImportParams", "EcdsaParams", "Window", "console"] }
+web-sys = { version = "0.3.68", features = ["Crypto", "CryptoKey", "SubtleCrypto", "HmacImportParams", "EcKeyImportParams", "EcdsaParams", "Window", "console"] }
 worker = "0.3.0"
 worker-sys = "0.3.0"
 
