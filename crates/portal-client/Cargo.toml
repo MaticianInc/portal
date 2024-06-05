@@ -9,7 +9,7 @@ authors.workspace = true
 repository.workspace = true
 
 [dependencies]
-matic-portal-types = { version = "0.1", path = "../portal-types" }
+matic-portal-types = { version = "0.2", path = "../portal-types" }
 
 anyhow.workspace = true
 pin-project.workspace = true

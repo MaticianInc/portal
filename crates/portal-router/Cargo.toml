@@ -13,7 +13,7 @@ crate-type = ["cdylib", "rlib"]
 default = ["console_error_panic_hook"]
 
 [dependencies]
-matic-portal-types = { version = "0.1", path = "../portal-types" }
+matic-portal-types = { version = "0.2", path = "../portal-types" }
 
 async-trait.workspace = true
 console_error_panic_hook = { workspace = true, optional = true }
