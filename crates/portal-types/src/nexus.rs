@@ -16,13 +16,6 @@ impl Nexus {
     pub fn new(raw_id: u64) -> Self {
         Self(raw_id)
     }
-
-    /// Access the `Nexus` value for display purposes.
-    ///
-    /// This may be needed when building server URLs.
-    pub fn raw_id(&self) -> impl Display {
-        self.0
-    }
 }
 
 /// An error parsing a nexus value.
@@ -36,5 +29,11 @@ impl FromStr for Nexus {
     fn from_str(nexus_str: &str) -> Result<Self, Self::Err> {
         let nexus_int: u64 = nexus_str.parse::<u64>().map_err(|_| NexusParseError)?;
         Ok(Nexus(nexus_int))
+    }
+}
+
+impl Display for Nexus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
     }
 }

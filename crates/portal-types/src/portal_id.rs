@@ -68,6 +68,12 @@ impl From<ServiceName> for String {
     }
 }
 
+impl AsRef<str> for ServiceName {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
 // The display impl just prints the inner integer.
 impl Display for ServiceName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
