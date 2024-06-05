@@ -1,9 +1,10 @@
 //! A client for the portal service.
 
+use std::fmt::Debug;
 use std::pin::Pin;
 use std::sync::OnceLock;
 use std::task::{Context, Poll};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use futures_util::{Sink, Stream, StreamExt as _};
 use matic_portal_types::{ControlMessage, Nexus};
@@ -29,6 +30,20 @@ pub struct StreamError;
 #[error("portal sink error")]
 pub struct SinkError;
 
+/// An error communicating with the Portal services.
+#[derive(Debug, thiserror::Error)]
+pub enum PortalError {
+    /// A timeout occurred while connecting.
+    #[error("portal connection timeout")]
+    Timeout,
+    /// An error occurred on the websocket.
+    #[error("websocket error")]
+    Websocket(#[from] WsError),
+    /// Something went wrong with the portal control protocol.
+    #[error("portal protocol error")]
+    Protocol,
+}
+
 /// An object representing the portal service we want to connect to.
 #[derive(Clone, Debug)]
 pub struct PortalService {
@@ -51,7 +66,7 @@ impl PortalService {
 
     fn host_accept_url(&self, nexus: Nexus) -> Url {
         let mut url = self.url.clone();
-        url.set_path(&format!("/connect/host_accept/{}", nexus.raw_id()));
+        url.set_path(&format!("/connect/host_accept/{}", nexus));
         url
     }
 
@@ -62,7 +77,7 @@ impl PortalService {
     }
 
     /// Make a host connection to the service.
-    pub async fn tunnel_host(&self, token: &str) -> Result<TunnelHost, WsError> {
+    pub async fn tunnel_host(&self, token: &str) -> Result<TunnelHost, PortalError> {
         let url = self.host_url();
         tracing::debug!("tunnel_host {url}");
         let ws = websocket_connect(url.as_str(), token).await?;
@@ -74,7 +89,11 @@ impl PortalService {
     }
 
     /// Accept an incoming client connection.
-    async fn accept_connection(&self, token: &str, nexus: Nexus) -> Result<TunnelSocket, WsError> {
+    async fn accept_connection(
+        &self,
+        token: &str,
+        nexus: Nexus,
+    ) -> Result<TunnelSocket, PortalError> {
         let url = self.host_accept_url(nexus);
         tracing::debug!("accept_connection {url}");
         let ws = websocket_connect(url.as_str(), token).await?;
@@ -83,7 +102,41 @@ impl PortalService {
     }
 
     /// Create a client connection to the portal service.
-    pub async fn tunnel_client(&self, token: &str, service: &str) -> Result<TunnelSocket, WsError> {
+    ///
+    /// A default timeout value will be used.
+    pub async fn tunnel_client(
+        &self,
+        token: &str,
+        service: &str,
+    ) -> Result<TunnelSocket, PortalError> {
+        self.tunnel_client_timeout(token, service, Duration::from_secs(10))
+            .await
+    }
+
+    /// Create a client connection to the portal service.
+    ///
+    /// If a host is connected but doesn't accept the connection, the attempt will time out
+    /// after the specified amount of time.
+    pub async fn tunnel_client_timeout(
+        &self,
+        token: &str,
+        service: &str,
+        timeout: Duration,
+    ) -> Result<TunnelSocket, PortalError> {
+        let timeout_result =
+            tokio::time::timeout(timeout, self.tunnel_client_inner(token, service)).await;
+
+        match timeout_result {
+            Err(_elapsed) => Err(PortalError::Timeout),
+            Ok(result) => Ok(result?),
+        }
+    }
+
+    async fn tunnel_client_inner(
+        &self,
+        token: &str,
+        service: &str,
+    ) -> Result<TunnelSocket, PortalError> {
         let url = self.client_url(service);
         tracing::debug!("tunnel_client {url}");
         let mut ws = websocket_connect(url.as_str(), token).await?;
@@ -109,11 +162,7 @@ impl PortalService {
                     // be delivered to the client because the TunnelSocket doesn't
                     // exist yet, so we will drop the connection.
                     tracing::error!("received binary message before Connected");
-                    // FIXME: we should use our own error type instead of abusing io::Error.
-                    Err(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        "portal protocol error",
-                    ))?;
+                    Err(PortalError::Protocol)?;
                 }
                 // Ignore all other message types.
                 _ => {}
@@ -182,7 +231,7 @@ impl IncomingClient {
     }
 
     /// Accept this connection by connecting a data socket to the client.
-    pub async fn connect(self, token: &str) -> Result<TunnelSocket, WsError> {
+    pub async fn connect(self, token: &str) -> Result<TunnelSocket, PortalError> {
         let ControlMessage::Incoming { nexus, .. } = self.control_message else {
             panic!("IncomingClient wrong control_message variant");
         };
@@ -199,6 +248,14 @@ use pin_project::pin_project;
 pub struct TunnelSocket {
     #[pin]
     ws: TcpWebSocket,
+}
+
+// This doesn't display any useful state; it's just here so
+// unit tests can call .unwrap_err() on attempted connections.
+impl Debug for TunnelSocket {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TunnelSocket").finish()
+    }
 }
 
 impl Stream for TunnelSocket {
