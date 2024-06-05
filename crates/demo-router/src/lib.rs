@@ -1,3 +1,3 @@
 pub mod auth;
-pub mod monitor;
+mod monitor;
 pub mod router;

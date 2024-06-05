@@ -2,6 +2,8 @@ use axum::extract::ws::{Message, WebSocket};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
+use std::future::Future;
+
 pub enum Control {
     /// Ask the monitor to yield the websocket.
     Cancel,
@@ -16,9 +18,9 @@ pub struct IdleWebSocket {
 }
 
 impl IdleWebSocket {
-    pub fn new(websocket: WebSocket, name: String) -> Self {
+    pub fn new(websocket: WebSocket, name: String, cleanup: impl Future + Send + 'static) -> Self {
         let (control_tx, control_rx) = mpsc::channel(4);
-        let task = tokio::spawn(Self::monitor(name.clone(), websocket, control_rx));
+        let task = tokio::spawn(Self::monitor(name.clone(), websocket, control_rx, cleanup));
         Self {
             name,
             control_tx,
@@ -32,7 +34,7 @@ impl IdleWebSocket {
     /// calls that want to receive should call `takeover` instead.
     ///
     /// If this fails, the connection may have died.
-    pub async fn send(&mut self, message: Message) -> Result<(), mpsc::error::SendError<Control>> {
+    pub async fn send(&self, message: Message) -> Result<(), mpsc::error::SendError<Control>> {
         self.control_tx.send(Control::Send(message)).await
     }
 
@@ -47,6 +49,7 @@ impl IdleWebSocket {
         name: String,
         mut websocket: WebSocket,
         mut control_rx: mpsc::Receiver<Control>,
+        cleanup: impl Future,
     ) -> Result<WebSocket, ()> {
         loop {
             let control_ref = &mut control_rx;
@@ -56,7 +59,7 @@ impl IdleWebSocket {
                         Some(Ok(_msg)) => (),
                         _ => {
                             tracing::info!("error on idle websocket {name}");
-                            return Err(());
+                            break;
                         }
                     }
                 }
@@ -74,23 +77,34 @@ impl IdleWebSocket {
                 }
             }
         }
-        // We received a cancel request; we are returning the websocket so a client can use it.
+        // Run any cleanup tasks (this removes the IdleWebSocket from the global map)
+        cleanup.await;
+
+        // Return the websocket so a client can use it.
         Ok(websocket)
     }
 
     /// Cancel the monitor and return the websocket, if available.
     ///
     /// If this returns an error then the websocket disconnected at some point in the past.
-    pub async fn takeover(self) -> Result<WebSocket, ()> {
+    pub async fn takeover(self) -> Result<WebSocket, TakeoverError> {
         tracing::debug!("cancelling websocket monitor, {}", self.name);
-        self.control_tx.send(Control::Cancel).await.unwrap();
+        self.control_tx
+            .send(Control::Cancel)
+            .await
+            .map_err(|_| TakeoverError)?;
         tracing::debug!("waiting for monitor to finish, {}", self.name);
         let result = match self.task.await {
-            Err(_) => Err(()),
-            Ok(Err(_)) => Err(()),
+            Err(_) => Err(TakeoverError),
+            Ok(Err(_)) => Err(TakeoverError),
             Ok(Ok(websocket)) => Ok(websocket),
         };
         tracing::debug!("monitor {} cancelled, err={}", self.name, result.is_err());
         result
     }
 }
+
+/// An error returned by IdleWebSocket::takeover().
+#[derive(Debug, thiserror::Error)]
+#[error("takeover error")]
+pub struct TakeoverError;

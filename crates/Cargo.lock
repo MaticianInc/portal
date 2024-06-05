@@ -383,6 +383,8 @@ dependencies = [
  "jsonwebtoken",
  "matic-portal-client",
  "matic-portal-types",
+ "rand",
+ "serde_json",
  "thiserror",
  "tokio",
  "tokio-tungstenite",

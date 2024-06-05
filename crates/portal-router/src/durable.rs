@@ -80,8 +80,8 @@ impl Display for SocketTag {
             // These strings are intended to be used as "tags" so we can
             // identify websockets in the CF "hibernation" model.
             SocketTag::HostControl => f.write_str("hc"),
-            SocketTag::HostData(nexus) => write!(f, "h-{}", nexus.raw_id()),
-            SocketTag::ClientData(nexus) => write!(f, "c-{}", nexus.raw_id()),
+            SocketTag::HostData(nexus) => write!(f, "h-{}", nexus),
+            SocketTag::ClientData(nexus) => write!(f, "c-{}", nexus),
         }
     }
 }
