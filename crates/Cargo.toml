@@ -34,7 +34,7 @@ thiserror = "1.0.40"
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 tracing-test = "0.2.4"
-tokio = { version = "1.30.0", features = ["macros", "net", "rt-multi-thread", "io-std", "sync"] }
+tokio = "1.30.0"
 tokio-stream = "0.1.14"
 tokio-tungstenite = {version = "0.21.0", features = ["rustls-tls-native-roots"] }
 url = "2.4.0"

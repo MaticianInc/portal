@@ -69,7 +69,7 @@ struct ClientParams {
     port: u16,
 }
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<()> {
     let mut args = Arguments::parse();
 

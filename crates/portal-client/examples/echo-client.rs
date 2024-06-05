@@ -91,7 +91,7 @@ async fn run_client(args: &Arguments) -> anyhow::Result<()> {
     }
 }
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() {
     let mut args = Arguments::parse();
 

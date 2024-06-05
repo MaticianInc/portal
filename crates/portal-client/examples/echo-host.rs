@@ -63,7 +63,7 @@ async fn handle_connection(args: Arguments, client: IncomingClient) -> anyhow::R
     Ok(())
 }
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() {
     let mut args = Arguments::parse();
 
