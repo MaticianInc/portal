@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use anyhow::{anyhow, Context};
+use anyhow::Context;
 use clap::{Parser, Subcommand};
 use futures_util::{Sink, SinkExt as _, Stream, StreamExt as _};
 use matic_portal_client::{IncomingClient, PortalService};
@@ -106,17 +106,9 @@ enum ForwardError {
     /// This may indicate a loss of network connectivity.
     #[error("portal connect error: {0}")]
     Connect(anyhow::Error),
-    /// An error sending or receiving data to the portal service.
-    ///
-    /// This probably means the network connection was lost.
-    #[error("portal dropped error: {0}")]
-    Dropped(anyhow::Error),
     /// An error connecting via local TCP socket.
     #[error("tcp error: {0}")]
     TcpConnect(anyhow::Error),
-    /// An error sending or receiving data on a local TCP socket.
-    #[error("tcp error: {0}")]
-    TcpDropped(anyhow::Error),
 }
 
 impl ForwardError {
@@ -124,11 +116,8 @@ impl ForwardError {
     ///
     /// If the error indicates that a working connection ended, do nothing.
     async fn retry_delay(&self) {
-        match self {
-            ForwardError::Connect(_) | ForwardError::TcpDropped(_) => {
-                tokio::time::sleep(Duration::from_secs(10)).await
-            }
-            _ => (),
+        if let ForwardError::Connect(_) = self {
+            tokio::time::sleep(Duration::from_secs(10)).await;
         }
     }
 }
@@ -210,35 +199,17 @@ async fn forwarding_host_one(
     port: u16,
 ) -> Result<(), ForwardError> {
     let auth_token = portal_params.auth_token.as_deref().unwrap_or_default();
-    let mut tunnel = incoming_client
+    let tunnel = incoming_client
         .connect(auth_token)
         .await
         .map_err(|e| ForwardError::Connect(e.into()))?;
 
     let host_port = format!("{}:{}", params.target_host, port);
 
-    // Wait for the first forwarded bytes to arrive before creating the local TCP connection.
-    //
-    let message = match tunnel.next().await {
-        Some(Ok(message)) => message,
-        _ => {
-            return Err(ForwardError::Dropped(anyhow!(
-                "websocket error waiting for first bytes"
-            )));
-        }
-    };
-
-    let mut socket = TcpStream::connect(&host_port)
+    let socket = TcpStream::connect(&host_port)
         .await
         .context("failed to open forwarding tcp stream")
         .map_err(ForwardError::TcpConnect)?;
-
-    // Forward the first bytes.
-    socket
-        .write_all(&message)
-        .await
-        .context("failed to write message to TCP socket")
-        .map_err(ForwardError::TcpDropped)?;
 
     let (tun_sender, tun_receiver) = tunnel.split();
     let (tcp_receiver, tcp_sender) = socket.into_split();
