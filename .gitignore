@@ -2,3 +2,4 @@ crates/target
 scripts/
 .wrangler/
 docker/
+.vscode
