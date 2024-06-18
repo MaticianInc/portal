@@ -1,6 +1,7 @@
 //! A client for the portal service.
 
 use std::fmt::Debug;
+use std::io::{self, ErrorKind};
 use std::pin::Pin;
 use std::sync::OnceLock;
 use std::task::{Context, Poll};
@@ -8,6 +9,7 @@ use std::time::{Duration, Instant};
 
 use futures_util::{Sink, Stream, StreamExt as _};
 use matic_portal_types::{ControlMessage, Nexus};
+use pin_project::pin_project;
 use tokio::net::TcpStream;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::protocol::Message;
@@ -15,20 +17,12 @@ use tokio_tungstenite::tungstenite::Error as WsError;
 use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
 use url::Url;
 
+mod tunnel_io;
+
 /// An malformed URL was passed to `PortalService::new()`
 #[derive(Debug, thiserror::Error)]
 #[error("bad service url")]
 pub struct UrlError;
-
-/// An error on the portal network downstream connection.
-#[derive(Debug, thiserror::Error)]
-#[error("portal stream error")]
-pub struct StreamError;
-
-/// An error on the portal network upstream connection.
-#[derive(Debug, thiserror::Error)]
-#[error("portal sink error")]
-pub struct SinkError;
 
 /// An error communicating with the Portal services.
 #[derive(Debug, thiserror::Error)]
@@ -241,8 +235,6 @@ impl IncomingClient {
 
 type TcpWebSocket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
-use pin_project::pin_project;
-
 /// A data connection to the portal service.
 #[pin_project(project_replace)]
 pub struct TunnelSocket {
@@ -259,7 +251,7 @@ impl Debug for TunnelSocket {
 }
 
 impl Stream for TunnelSocket {
-    type Item = Result<Vec<u8>, StreamError>;
+    type Item = io::Result<Vec<u8>>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let mut ws = self.project().ws;
@@ -269,7 +261,9 @@ impl Stream for TunnelSocket {
         loop {
             let message = match ws.as_mut().poll_next(cx) {
                 Poll::Ready(Some(Ok(message))) => message,
-                Poll::Ready(Some(Err(_))) => return Poll::Ready(Some(Err(StreamError))),
+                Poll::Ready(Some(Err(_))) => {
+                    return Poll::Ready(Some(Err(ErrorKind::BrokenPipe.into())))
+                }
                 Poll::Ready(None) => return Poll::Ready(None),
                 Poll::Pending => return Poll::Pending,
             };
@@ -297,11 +291,13 @@ impl Stream for TunnelSocket {
 }
 
 impl Sink<Vec<u8>> for TunnelSocket {
-    type Error = SinkError;
+    type Error = io::Error;
 
     fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         let mut ws = self.project().ws;
-        ws.as_mut().poll_ready(cx).map_err(|_| SinkError)
+        ws.as_mut()
+            .poll_ready(cx)
+            .map_err(|_| ErrorKind::BrokenPipe.into())
     }
 
     fn start_send(self: Pin<&mut Self>, item: Vec<u8>) -> Result<(), Self::Error> {
@@ -314,17 +310,23 @@ impl Sink<Vec<u8>> for TunnelSocket {
         };
 
         let mut ws = self.project().ws;
-        ws.as_mut().start_send(item).map_err(|_| SinkError)
+        ws.as_mut()
+            .start_send(item)
+            .map_err(|_| ErrorKind::BrokenPipe.into())
     }
 
     fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         let mut ws = self.project().ws;
-        ws.as_mut().poll_flush(cx).map_err(|_| SinkError)
+        ws.as_mut()
+            .poll_flush(cx)
+            .map_err(|_| ErrorKind::BrokenPipe.into())
     }
 
     fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         let mut ws = self.project().ws;
-        ws.as_mut().poll_close(cx).map_err(|_| SinkError)
+        ws.as_mut()
+            .poll_close(cx)
+            .map_err(|_| ErrorKind::BrokenPipe.into())
     }
 }
 

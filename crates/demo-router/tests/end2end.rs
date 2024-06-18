@@ -8,6 +8,7 @@ use futures_util::{SinkExt, StreamExt};
 use jsonwebtoken::{EncodingKey, Header};
 use matic_portal_client::PortalError;
 use matic_portal_types::{JwtClaims, PortalId, Role};
+use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 use tokio::sync::oneshot;
 use tokio_tungstenite::tungstenite::Error as WsError;
 
@@ -180,4 +181,48 @@ async fn end2end() {
         .await
         .unwrap();
     client.send(vec![11, 22, 33]).await.unwrap();
+}
+
+#[tokio::test]
+#[tracing_test::traced_test]
+async fn end2end_io() {
+    let mut router = PortalRouter::new("secret");
+    let router_addr = router.bind().await;
+    let url = url_from_addr(router_addr);
+    tokio::spawn(router.serve());
+
+    let tokens = TokenMaker::new(b"secret");
+    let client_token = tokens.make_token(PortalId::from(1234), Role::Client, EXP_24H);
+    let service = Arc::new(matic_portal_client::PortalService::new(&url).unwrap());
+    let service2 = service.clone();
+
+    let (host_ready_tx, host_ready_rx) = oneshot::channel();
+
+    tokio::spawn(async move {
+        let host_token = tokens.make_token(PortalId::from(1234), Role::Host, EXP_24H);
+        let mut host = service2.tunnel_host(&host_token).await.unwrap();
+        host_ready_tx.send(()).unwrap();
+        let incoming = host.next_client().await.unwrap();
+        assert_eq!(incoming.service_name(), "hello_world");
+        let sock = incoming.connect(&host_token).await.unwrap();
+
+        // Test data send/receive using AsyncRead/AsyncWrite implementation.
+        let mut host_io = sock.into_io();
+        let mut buffer = [0u8; 5];
+        let count = host_io.read_exact(&mut buffer).await.unwrap();
+        assert_eq!(count, 5);
+        assert_eq!(buffer, [11, 22, 33, 44, 55]);
+    });
+
+    host_ready_rx.await.unwrap();
+
+    let client = service
+        .tunnel_client(&client_token, "hello_world")
+        .await
+        .unwrap();
+
+    let mut client_io = client.into_io();
+
+    client_io.write_all(&[11, 22, 33]).await.unwrap();
+    client_io.write_all(&[44, 55, 66]).await.unwrap();
 }
