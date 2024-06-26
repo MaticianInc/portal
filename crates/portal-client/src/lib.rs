@@ -3,18 +3,22 @@
 use std::fmt::Debug;
 use std::io::{self, ErrorKind};
 use std::pin::Pin;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
 use futures_util::{Sink, Stream, StreamExt as _};
 use matic_portal_types::{ControlMessage, Nexus};
 use pin_project::pin_project;
+use rustls::ClientConfig;
+use rustls_platform_verifier::Verifier;
 use tokio::net::TcpStream;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::protocol::Message;
 use tokio_tungstenite::tungstenite::Error as WsError;
-use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
+use tokio_tungstenite::{
+    connect_async_tls_with_config, Connector, MaybeTlsStream, WebSocketStream,
+};
 use url::Url;
 
 mod tunnel_io;
@@ -337,7 +341,15 @@ async fn websocket_connect(url: &str, token: &str) -> Result<TcpWebSocket, WsErr
         "authorization",
         format!("Bearer {}", token).parse().unwrap(),
     );
-    let (websocket, http_response) = connect_async(request).await?;
+    let config = Arc::new(
+        ClientConfig::builder()
+            .dangerous() // The `Verifier` we're using is actually safe
+            .with_custom_certificate_verifier(Arc::new(Verifier::new()))
+            .with_no_client_auth(),
+    );
+    let (websocket, http_response) =
+        connect_async_tls_with_config(request, None, false, Some(Connector::Rustls(config)))
+            .await?;
     tracing::debug!("got http response: {http_response:?}");
     Ok(websocket)
 }

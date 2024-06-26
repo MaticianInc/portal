@@ -28,6 +28,8 @@ jsonwebtoken = "9.2.0"
 pem = { version = "3.0.3", default-features = false }
 pin-project = "1.1.0"
 rand = "0.8.5"
+rustls-platform-verifier = "0.2.0"
+rustls = "0.22.4"
 serde = { version = "1.0.187", features = ["derive"] }
 serde_json = "1.0.97"
 thiserror = "1.0.40"

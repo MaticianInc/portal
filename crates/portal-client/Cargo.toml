@@ -19,7 +19,9 @@ thiserror.workspace = true
 tracing.workspace = true
 tokio = { workspace = true, features = ["sync", "time", "macros", "rt"] }
 tokio-tungstenite.workspace = true
-tokio-util = {workspace = true, features = ["io"] }
+tokio-util = { workspace = true, features = ["io"] }
+rustls-platform-verifier.workspace = true
+rustls.workspace = true
 url.workspace = true
 
 [dev-dependencies]
