@@ -18,9 +18,14 @@ serde_json.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 tokio = { workspace = true, features = ["sync", "time", "macros", "rt"] }
-tokio-tungstenite.workspace = true
-tokio-util = {workspace = true, features = ["io"] }
+tokio-util = { workspace = true, features = ["io"] }
 url.workspace = true
+
+[target.'cfg(any(target_os = "ios", target_os = "android"))'.dependencies]
+tokio-tungstenite = { workspace = true, features = ["native-tls"] }
+
+[target.'cfg(not(any(target_os = "ios", target_os = "android")))'.dependencies]
+tokio-tungstenite = { workspace = true, features = ["rustls-tls-native-roots"] }
 
 [dev-dependencies]
 clap.workspace = true
