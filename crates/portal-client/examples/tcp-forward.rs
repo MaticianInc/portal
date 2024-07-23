@@ -51,10 +51,10 @@ struct PortalParams {
 
 #[derive(Debug, Clone, Parser)]
 struct HostParams {
-    /// Port to forward
+    /// Host to forward connections to
     #[arg(long, default_value = "localhost")]
     target_host: String,
-    /// Port to forward
+    /// Port to forward connections to
     #[arg(long, default_value_t = 22)]
     target_port: u16,
 }
@@ -164,26 +164,17 @@ async fn forwarding_host(
     // wait for the next incoming client connection.
     while let Some(incoming_client) = tunnel_host.next_client().await {
         let service_name = incoming_client.service_name();
-        let port = match service_name.strip_prefix("port") {
-            Some(port) => match port.parse::<u16>() {
-                Ok(port) => port,
-                Err(_) => {
-                    tracing::info!("bad port number in service name {service_name}");
-                    continue;
-                }
-            },
-            None => {
-                tracing::info!("unrecognized service name {service_name}");
-                continue;
-            }
-        };
+        if service_name != portal_params.service {
+            tracing::info!("unrecognized service name {service_name}");
+            continue;
+        }
 
         // Handle the I/O forwarding in a separate task.
         tokio::spawn(forwarding_host_one(
             incoming_client,
             portal_params.clone(),
             params.clone(),
-            port,
+            params.target_port,
         ));
     }
 
