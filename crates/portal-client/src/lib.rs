@@ -75,6 +75,10 @@ impl PortalService {
     }
 
     /// Make a host connection to the service.
+    ///
+    /// Any network errors will be returned immediately to the caller.
+    /// It is the caller's responsibility to decide when to retry, if
+    /// it intends to gracefully handle temporary network issues.
     pub async fn tunnel_host(&self, token: &str) -> Result<TunnelHost, PortalError> {
         let url = self.host_url();
         tracing::debug!("tunnel_host {url}");
