@@ -7,12 +7,13 @@ use std::sync::{Arc, OnceLock};
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
-use futures_util::{Sink, Stream, StreamExt as _};
+use futures_util::{Sink, SinkExt as _, Stream, StreamExt as _};
 use matic_portal_types::{ControlMessage, Nexus};
 use pin_project::pin_project;
 use rustls::ClientConfig;
 use rustls_platform_verifier::Verifier;
 use tokio::net::TcpStream;
+use tokio::time::timeout;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::protocol::Message;
 use tokio_tungstenite::tungstenite::Error as WsError;
@@ -22,6 +23,9 @@ use tokio_tungstenite::{
 use url::Url;
 
 mod tunnel_io;
+
+/// The amount of time a control socket can be idle before we send a keepalive ping.
+const DEFAULT_KEEPALIVE_PERIOD: Duration = Duration::from_secs(120);
 
 /// An malformed URL was passed to `PortalService::new()`
 #[derive(Debug, thiserror::Error)]
@@ -46,6 +50,7 @@ pub enum PortalError {
 #[derive(Clone, Debug)]
 pub struct PortalService {
     url: Url,
+    keepalive_period: Duration,
 }
 
 impl PortalService {
@@ -53,7 +58,22 @@ impl PortalService {
     pub fn new(url: &str) -> Result<Self, UrlError> {
         let url = Url::parse(url).map_err(|_| UrlError)?;
         // FIXME: reject the url if it contains a path or any query parameters.
-        Ok(Self { url })
+        Ok(Self {
+            url,
+            keepalive_period: DEFAULT_KEEPALIVE_PERIOD,
+        })
+    }
+
+    /// Set the keepalive period.
+    ///
+    /// A host will automatically send keepalive ping messages if the
+    /// socket is idle for this amount of time.
+    ///
+    /// The keepalive period is 120 seconds by default.
+    ///
+    /// To disable keepalives, use `Duration::MAX`.
+    pub fn set_keepalive_period(&mut self, period: Duration) {
+        self.keepalive_period = period;
     }
 
     fn host_url(&self) -> Url {
@@ -87,6 +107,7 @@ impl PortalService {
         Ok(TunnelHost {
             service: self.clone(),
             ws,
+            keepalive_period: self.keepalive_period,
         })
     }
 
@@ -123,10 +144,10 @@ impl PortalService {
         &self,
         token: &str,
         service: &str,
-        timeout: Duration,
+        timeout_duration: Duration,
     ) -> Result<TunnelSocket, PortalError> {
         let timeout_result =
-            tokio::time::timeout(timeout, self.tunnel_client_inner(token, service)).await;
+            timeout(timeout_duration, self.tunnel_client_inner(token, service)).await;
 
         match timeout_result {
             Err(_elapsed) => Err(PortalError::Timeout),
@@ -179,12 +200,26 @@ impl PortalService {
 pub struct TunnelHost {
     service: PortalService,
     ws: TcpWebSocket,
+    keepalive_period: Duration,
 }
 
 impl TunnelHost {
     /// Wait for a client to connect.
     pub async fn next_client(&mut self) -> Option<IncomingClient> {
-        while let Some(Ok(message)) = self.ws.next().await {
+        loop {
+            // Loop sending keepalives until we receive a message.
+            // This assumes that WebSocketStream is cancel-safe.
+            let Ok(stream_result) = timeout(self.keepalive_period, self.ws.next()).await else {
+                tracing::trace!("sending keepalive ping");
+                self.ws.send(Message::Ping(vec![])).await.ok()?;
+                continue;
+            };
+
+            let Some(Ok(message)) = stream_result else {
+                tracing::debug!("next_client stream ending");
+                return None;
+            };
+
             match message {
                 Message::Text(txt_msg) => {
                     let Ok(control_message) = serde_json::from_str::<ControlMessage>(&txt_msg)
@@ -200,10 +235,11 @@ impl TunnelHost {
                     tracing::warn!("ignoring binary message on host control socket");
                 }
                 // Ignore all other message types.
-                _ => {}
+                msg => {
+                    tracing::trace!("incoming ws message {msg:?}");
+                }
             }
         }
-        None
     }
 }
 
