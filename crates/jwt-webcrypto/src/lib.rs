@@ -69,8 +69,8 @@ impl Validator {
                 )
             }
             Algorithm::ES256 => {
-                let mut algorithm = EcKeyImportParams::new("ECDSA");
-                algorithm.named_curve("P-256");
+                let algorithm = EcKeyImportParams::new("ECDSA");
+                algorithm.set_named_curve("P-256");
                 subtle.import_key_with_object(
                     "spki",
                     &key,

@@ -22,7 +22,7 @@ clap = { version = "4.5.2", features = ["derive"] }
 console_error_panic_hook = { version = "0.1.7" }
 dashmap = "5.5.3"
 futures-util = { version = "0.3.31", default-features = false }
-js-sys = "0.3.67"
+js-sys = "0.3.72"
 jsonwebtoken = "9.2.0"
 pem = { version = "3.0.3", default-features = false }
 pin-project = "1.1.0"
@@ -40,11 +40,11 @@ tokio-stream = "0.1.14"
 tokio-tungstenite = {version = "0.21.0", features = ["rustls-tls-native-roots"] }
 tokio-util = "0.7.8"
 url = "2.4.0"
-wasm-bindgen = "0.2.86"
-wasm-bindgen-futures = "0.4.40"
-wasm-bindgen-test = "0.3.40"
+wasm-bindgen = "0.2.95"
+wasm-bindgen-futures = "0.4.45"
+wasm-bindgen-test = "0.3.45"
 web-sys = { version = "0.3.68", features = ["Crypto", "CryptoKey", "SubtleCrypto", "HmacImportParams", "EcKeyImportParams", "EcdsaParams", "Window", "console"] }
-worker = "0.3.0"
-worker-sys = "0.3.0"
+worker = "0.4.2"
+worker-sys = "0.4.2"
 
 jwt-webcrypto = { path = "jwt-webcrypto" }
