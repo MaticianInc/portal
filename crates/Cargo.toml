@@ -21,8 +21,7 @@ base64 = { version = "0.21.7", default-features = false, features = ["alloc"] }
 clap = { version = "4.5.2", features = ["derive"] }
 console_error_panic_hook = { version = "0.1.7" }
 dashmap = "5.5.3"
-futures = "0.3.30"
-futures-util = { version = "0.3.28", default-features = false }
+futures-util = { version = "0.3.31", default-features = false }
 js-sys = "0.3.67"
 jsonwebtoken = "9.2.0"
 pem = { version = "3.0.3", default-features = false }
