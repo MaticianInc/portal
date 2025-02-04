@@ -12,6 +12,9 @@ crate-type = ["cdylib", "rlib"]
 [features]
 default = ["console_error_panic_hook"]
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(wasm_bindgen_unstable_test_coverage)'] }
+
 [dependencies]
 matic-portal-types = { version = "0.2", path = "../portal-types" }
 
