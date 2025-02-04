@@ -1,6 +1,7 @@
 //! Tests that can be run in a web browser
 //!
 //! Run with e.g. `wasm-pack test --headless --firefox`
+#![cfg(target_arch = "wasm32")]
 
 use jwt_webcrypto::{Algorithm, ValidateFailure, Validator};
 use wasm_bindgen_test::{wasm_bindgen_test, wasm_bindgen_test_configure};
