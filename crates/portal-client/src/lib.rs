@@ -1,6 +1,6 @@
 //! A client for the portal service.
 
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
 use std::io::{self, ErrorKind};
 use std::pin::Pin;
 use std::sync::{Arc, OnceLock};
@@ -36,14 +36,26 @@ pub struct UrlError;
 #[derive(Debug, thiserror::Error)]
 pub enum PortalError {
     /// A timeout occurred while connecting.
-    #[error("portal connection timeout")]
     Timeout,
     /// An error occurred on the websocket.
-    #[error("websocket error")]
     Websocket(#[from] WsError),
     /// Something went wrong with the portal control protocol.
-    #[error("portal protocol error")]
     Protocol,
+}
+
+impl Display for PortalError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Timeout => f.write_str("portal connection timeout"),
+            Self::Websocket(WsError::Http(response)) if !response.status().is_success() => {
+                write!(f, "http error {}", response.status())
+            }
+            Self::Websocket(ws_err) => {
+                write!(f, "websocket error: {ws_err}")
+            }
+            Self::Protocol => f.write_str("portal protocol error"),
+        }
+    }
 }
 
 /// An object representing the portal service we want to connect to.
