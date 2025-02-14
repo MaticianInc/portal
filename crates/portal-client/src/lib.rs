@@ -16,11 +16,14 @@ use tokio::net::TcpStream;
 use tokio::time::timeout;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::protocol::Message;
-use tokio_tungstenite::tungstenite::Error as WsError;
 use tokio_tungstenite::{
     connect_async_tls_with_config, Connector, MaybeTlsStream, WebSocketStream,
 };
 use url::Url;
+
+// Publish this so that downstream users don't need to independently
+// import the exact version of tungstenite just to inspect errors.
+pub use tokio_tungstenite::tungstenite::Error as WsError;
 
 mod tunnel_io;
 
