@@ -4,6 +4,7 @@ authors = ["Eric Seppanen <eric@matician.com>"]
 version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
+publish = false
 
 [dependencies]
 base64 = { workspace = true, default-features = false, features = ["alloc"] }
