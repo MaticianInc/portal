@@ -1,7 +1,6 @@
 use std::ops::Deref;
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use axum::extract::FromRequestParts;
 use axum::http::StatusCode;
 use axum_extra::headers::authorization::Bearer;
@@ -32,7 +31,6 @@ impl Claims {
     }
 }
 
-#[async_trait]
 impl<S> FromRequestParts<S> for Claims
 where
     S: Sync + Send,

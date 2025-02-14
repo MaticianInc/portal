@@ -12,6 +12,7 @@ repository.workspace = true
 matic-portal-types = { version = "0.2", path = "../portal-types" }
 
 anyhow.workspace = true
+bytes.workspace = true
 pin-project.workspace = true
 futures-util.workspace = true
 serde_json.workspace = true

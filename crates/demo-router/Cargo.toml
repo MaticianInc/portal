@@ -8,7 +8,6 @@ publish = false
 [dependencies]
 matic-portal-types = { version = "0.2", path = "../portal-types" }
 
-async-trait.workspace = true
 axum.workspace = true
 axum-extra.workspace = true
 dashmap.workspace = true
@@ -23,6 +22,7 @@ tokio-tungstenite.workspace = true
 futures-util.workspace = true
 
 [dev-dependencies]
+bytes.workspace = true
 clap.workspace = true
 tracing-test.workspace = true
 matic-portal-client = { version = "0.4.0-alpha1", path = "../portal-client" }

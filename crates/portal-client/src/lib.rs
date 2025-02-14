@@ -3,10 +3,11 @@
 use std::fmt::{Debug, Display};
 use std::io::{self, ErrorKind};
 use std::pin::Pin;
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 use std::task::{Context, Poll};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
+use bytes::Bytes;
 use futures_util::{Sink, SinkExt as _, Stream, StreamExt as _};
 use matic_portal_types::{ControlMessage, Nexus};
 use pin_project::pin_project;
@@ -241,7 +242,7 @@ impl TunnelHost {
                     connection_in_doubt = true;
                 }
                 tracing::trace!("sending keepalive ping");
-                self.ws.send(Message::Ping(vec![])).await.ok()?;
+                self.ws.send(Message::Ping(Bytes::new())).await.ok()?;
                 continue;
             };
 
@@ -330,7 +331,7 @@ impl Debug for TunnelSocket {
 }
 
 impl Stream for TunnelSocket {
-    type Item = io::Result<Vec<u8>>;
+    type Item = io::Result<Bytes>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let mut ws = self.project().ws;
@@ -353,15 +354,8 @@ impl Stream for TunnelSocket {
                 Message::Ping(_) => {
                     tracing::debug!("received ping message");
                 }
-                Message::Pong(message) => {
-                    // We expect a Pong message to contain 8 bytes, that contain
-                    // the f64 timestamp we sent in a Ping.
-                    if let Ok(ts_bytes) = <[u8; 8]>::try_from(message) {
-                        let ping_timestamp = f64::from_be_bytes(ts_bytes);
-                        let now = get_timestamp();
-                        let delta_time = 1000.0 * (now - ping_timestamp);
-                        tracing::debug!("ping-pong time {delta_time} ms")
-                    }
+                Message::Pong(_) => {
+                    tracing::debug!("received pong message");
                 }
                 _ => (),
             }
@@ -369,7 +363,7 @@ impl Stream for TunnelSocket {
     }
 }
 
-impl Sink<Vec<u8>> for TunnelSocket {
+impl Sink<Bytes> for TunnelSocket {
     type Error = io::Error;
 
     fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
@@ -379,11 +373,10 @@ impl Sink<Vec<u8>> for TunnelSocket {
             .map_err(|_| ErrorKind::BrokenPipe.into())
     }
 
-    fn start_send(self: Pin<&mut Self>, item: Vec<u8>) -> Result<(), Self::Error> {
+    fn start_send(self: Pin<&mut Self>, item: Bytes) -> Result<(), Self::Error> {
         // We (mis-)use an empty Vec to signal that a keepalive should be sent.
         let item = if item.is_empty() {
-            let timestamp = get_timestamp();
-            Message::Ping(timestamp.to_be_bytes().into())
+            Message::Ping(Bytes::new())
         } else {
             Message::Binary(item)
         };
@@ -427,12 +420,4 @@ async fn websocket_connect(url: &str, token: &str) -> Result<TcpWebSocket, WsErr
             .await?;
     tracing::debug!("got http response: {http_response:?}");
     Ok(websocket)
-}
-
-static TIMESTAMP_BASE: OnceLock<Instant> = OnceLock::new();
-
-/// Get a monotonic timestamp, in f64 seconds.
-fn get_timestamp() -> f64 {
-    let base = TIMESTAMP_BASE.get_or_init(Instant::now);
-    base.elapsed().as_secs_f64()
 }

@@ -181,7 +181,7 @@ async fn host_accept(
 
     // Send a message to the client to inform it the connection is complete.
     let message = ControlMessage::Connected;
-    let message = Message::Text(serde_json::to_string(&message).unwrap());
+    let message = Message::Text(serde_json::to_string(&message).unwrap().into());
 
     if client_ws.send(message).await.is_err() {
         tracing::error!(
@@ -217,7 +217,7 @@ async fn connect_client(
         service_name: service_name.as_ref().to_owned(),
         nexus,
     };
-    let message = Message::Text(serde_json::to_string(&message).unwrap());
+    let message = Message::Text(serde_json::to_string(&message).unwrap().into());
 
     if state.host_ws_send(portal_id, message).await.is_none() {
         tracing::error!("failed to send hello message to {portal_id}:{service_name}");
@@ -235,7 +235,7 @@ async fn connect_client(
 fn random_nexus() -> Nexus {
     use rand::Rng;
 
-    let nexus_int: u64 = rand::thread_rng().gen();
+    let nexus_int: u64 = rand::rng().random();
     Nexus::new(nexus_int)
 }
 

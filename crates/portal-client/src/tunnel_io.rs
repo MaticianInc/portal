@@ -6,6 +6,7 @@ use std::pin::{pin, Pin};
 use std::task::{ready, Context, Poll};
 use std::time::Duration;
 
+use bytes::Bytes;
 use futures_util::stream::{SplitSink, SplitStream};
 use futures_util::{SinkExt, Stream, StreamExt as _};
 use pin_project::pin_project;
@@ -55,13 +56,13 @@ impl TunnelSocket {
 }
 
 /// The type of the inner type that implements AsyncRead + AsyncWrite.
-type InnerReader = StreamReader<TunnelSocketWithCursor, Cursor<Vec<u8>>>;
+type InnerReader = StreamReader<TunnelSocketWithCursor, Cursor<Bytes>>;
 
 #[pin_project]
 pub struct TunnelSocketIo {
     #[pin]
     reader: InnerReader,
-    write_channel: PollSender<Vec<u8>>,
+    write_channel: PollSender<Bytes>,
 }
 
 // A passthrough to the inner AsyncRead impl.
@@ -89,7 +90,9 @@ impl AsyncWrite for TunnelSocketIo {
         let write_channel = self.project().write_channel;
         ready!(write_channel.poll_reserve(cx)).map_err(broken_pipe)?;
         let len = buf.len();
-        write_channel.send_item(buf.to_vec()).map_err(broken_pipe)?;
+        write_channel
+            .send_item(Bytes::copy_from_slice(buf))
+            .map_err(broken_pipe)?;
         Poll::Ready(Ok(len))
     }
 
@@ -112,8 +115,8 @@ impl AsyncWrite for TunnelSocketIo {
 }
 
 async fn write_with_keepalives(
-    mut sink: SplitSink<TunnelSocket, Vec<u8>>,
-    mut chan: Receiver<Vec<u8>>,
+    mut sink: SplitSink<TunnelSocket, Bytes>,
+    mut chan: Receiver<bytes::Bytes>,
     keepalive_period: Duration,
 ) {
     loop {
@@ -132,7 +135,7 @@ async fn write_with_keepalives(
                 return;
             }
             Some(Some(incoming)) => incoming,
-            None => Vec::new(),
+            None => Bytes::new(),
         };
 
         if sink.send(send_buf).await.is_err() {
@@ -145,7 +148,7 @@ async fn write_with_keepalives(
 /// A wrapper type that allows us to use `StreamReader` and `SinkWriter`.
 ///
 /// If we do this with StreamExt::map then we lose the Sink impl.
-/// All it does is map the stream item to `Cursor<Vec<u8>>` and the sink type to `&[u8]`.
+/// All it does is map the stream item to `Cursor<Bytes>` and the sink type to `&[u8]`.
 #[pin_project]
 struct TunnelSocketWithCursor {
     #[pin]
@@ -159,7 +162,7 @@ impl TunnelSocketWithCursor {
 }
 
 impl Stream for TunnelSocketWithCursor {
-    type Item = io::Result<Cursor<Vec<u8>>>;
+    type Item = io::Result<Cursor<Bytes>>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         self.as_mut()

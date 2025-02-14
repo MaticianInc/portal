@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use axum::http::StatusCode;
+use bytes::Bytes;
 use demo_router::router::PortalRouter;
 use futures_util::{SinkExt, StreamExt};
 use jsonwebtoken::{EncodingKey, Header};
@@ -171,7 +172,7 @@ async fn end2end() {
         assert_eq!(incoming.service_name(), "hello_world");
         let mut sock = incoming.connect(&host_token).await.unwrap();
         let message = sock.next().await.unwrap().unwrap();
-        assert_eq!(message, [11, 22, 33]);
+        assert_eq!(message, [11, 22, 33].as_ref());
     });
 
     host_ready_rx.await.unwrap();
@@ -180,7 +181,10 @@ async fn end2end() {
         .tunnel_client(&client_token, "hello_world")
         .await
         .unwrap();
-    client.send(vec![11, 22, 33]).await.unwrap();
+    client
+        .send(Bytes::from([11, 22, 33].as_ref()))
+        .await
+        .unwrap();
 }
 
 #[tokio::test]

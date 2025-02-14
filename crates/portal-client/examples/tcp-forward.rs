@@ -3,6 +3,7 @@
 use std::time::Duration;
 
 use anyhow::Context;
+use bytes::{Bytes, BytesMut};
 use clap::{Parser, Subcommand};
 use futures_util::{Sink, SinkExt as _, Stream, StreamExt as _};
 use matic_portal_client::{IncomingClient, PortalService};
@@ -295,13 +296,13 @@ async fn tcp_to_tunnel<R, W>(
 ) -> anyhow::Result<()>
 where
     R: tokio::io::AsyncRead + Unpin,
-    W: Sink<Vec<u8>> + Unpin,
-    <W as Sink<Vec<u8>>>::Error: std::error::Error + Send + Sync + 'static,
+    W: Sink<Bytes> + Unpin,
+    <W as Sink<Bytes>>::Error: std::error::Error + Send + Sync + 'static,
 {
     use tokio::io::AsyncReadExt;
 
     loop {
-        let mut buf = Vec::with_capacity(65536);
+        let mut buf = BytesMut::with_capacity(65536);
 
         // Race a timeout (for keepalives) with a TCP read.
         // Note: `AsyncReadExt::read_buf` is documented to be cancel-safe.
@@ -322,7 +323,7 @@ where
             Some(Ok(_)) => {
                 let msg_size = buf.len() as u64;
                 ws_sender
-                    .send(buf)
+                    .send(buf.into())
                     .await
                     .context("websocket write failed")?;
                 if let Some(counters) = counters {
@@ -335,7 +336,7 @@ where
                 // We (mis-)use an empty vec to trigger keepalive send.
                 tracing::debug!("sending keepalive ping");
                 ws_sender
-                    .send(buf)
+                    .send(buf.into())
                     .await
                     .context("websocket write(ping) failed")?;
             }
@@ -350,7 +351,7 @@ async fn tunnel_to_tcp<R, W, E>(
     counters: Option<&PerfCounters>,
 ) -> anyhow::Result<()>
 where
-    R: Stream<Item = Result<Vec<u8>, E>> + Unpin,
+    R: Stream<Item = Result<Bytes, E>> + Unpin,
     W: tokio::io::AsyncWrite + Unpin,
     E: std::error::Error + Send + Sync + 'static,
 {

@@ -5,6 +5,7 @@ use std::sync::OnceLock;
 use std::time::Instant;
 
 use anyhow::{anyhow, bail, Context};
+use bytes::Bytes;
 use clap::Parser;
 use futures_util::{SinkExt, StreamExt};
 use matic_portal_client::PortalService;
@@ -73,7 +74,7 @@ async fn run_client(args: &Arguments) -> anyhow::Result<()> {
                     Ok(Some(mut text)) => {
                         let message = if text.trim().is_empty() {
                             // Send a ping instead of an empty message.
-                            Vec::new()
+                            Bytes::new()
                         } else {
                             // The message "!!" means "measure the round-trip message time".
                             if text.trim() == "!!" {
