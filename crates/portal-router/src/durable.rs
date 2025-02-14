@@ -142,25 +142,34 @@ impl DurableObject for DurableRouter {
     ) -> worker::Result<()> {
         let tags = self.state.get_tags(&ws);
 
-        // Figure out if the sender is a host or client.
-        for tag in tags {
-            match tag.parse::<SocketTag>() {
-                Ok(SocketTag::HostControl) => {
-                    // Well-behaved hosts should not do this.
-                    console_log!("warning: host sent a message on host control socket");
-                    break;
-                }
-                Ok(SocketTag::HostData(nexus)) => {
-                    self.message_from_host(nexus, message);
-                    break;
-                }
-                Ok(SocketTag::ClientData(nexus)) => {
-                    self.message_from_client(nexus, message);
-                    break;
-                }
-                Err(_) => console_log!("unrecognized tag {tag}"),
+        // Figure out if the sender is a host or client. Skip over any broken tags.
+        let socket_tag = tags
+            .iter()
+            .filter_map(|tag| {
+                tag.parse::<SocketTag>()
+                    .inspect_err(|_| console_log!("unrecognized tag {tag}"))
+                    .ok()
+            })
+            .next();
+        let Some(socket_tag) = socket_tag else {
+            // FIXME: is there a better way to compose this error?
+            return Err(worker::Error::RustError("missing peer".into()));
+        };
+
+        let result = match socket_tag {
+            SocketTag::HostControl => {
+                // Well-behaved hosts should not do this.
+                console_log!("warning: host sent a message on host control socket");
+                Err(ProtocolError::BadMessage)
             }
+            SocketTag::HostData(nexus) => self.message_from_host(nexus, message),
+            SocketTag::ClientData(nexus) => self.message_from_client(nexus, message),
+        };
+        if result.is_err() {
+            console_log!("closing sender socket due to error");
+            let _ = ws.close(None, None::<&str>);
         }
+
         Ok(())
     }
 
@@ -349,49 +358,69 @@ impl DurableRouter {
         Response::from_websocket(client_ws)
     }
 
-    /// Handle a message from the host
-    fn message_from_host(&self, nexus: Nexus, message: WebSocketIncomingMessage) {
+    /// Handle a message from the host.
+    ///
+    /// If we fail to send the message to the peer client, we will return an error.
+    fn message_from_host(
+        &self,
+        nexus: Nexus,
+        message: WebSocketIncomingMessage,
+    ) -> Result<(), ProtocolError> {
         match message {
-            //
-            // FIXME: ensure that text messages between host + client aren't propagated
-            // as they could masquerade as server messages.
-            //
             WebSocketIncomingMessage::String(_) => {
                 // Text messages should only come from the server, not a peer.
                 // Otherwise ControlMessage spoofing might be possible.
-                console_log!("ignoring string message from host");
+                console_log!("improper string message from host");
+                Err(ProtocolError::BadMessage)
             }
             WebSocketIncomingMessage::Binary(msg) => {
                 let client_tag = SocketTag::ClientData(nexus);
                 let Some(client_socket) = self.find_websocket(&client_tag) else {
                     console_log!("client socket {client_tag} not found");
-                    return;
+                    return Err(ProtocolError::PeerBroken);
                 };
-                if let Err(e) = client_socket.send_with_bytes(msg) {
+                client_socket.send_with_bytes(msg).map_err(|e| {
                     console_log!("error sending to client: {e}");
-                }
+                    ProtocolError::PeerBroken
+                })
             }
         }
     }
 
-    /// Handle a message from the client
-    fn message_from_client(&self, nexus: Nexus, message: WebSocketIncomingMessage) {
+    /// Handle a message from the client.
+    ///
+    /// If we fail to send the message to the peer host, we will return an error.
+    fn message_from_client(
+        &self,
+        nexus: Nexus,
+        message: WebSocketIncomingMessage,
+    ) -> Result<(), ProtocolError> {
         match message {
             WebSocketIncomingMessage::String(_) => {
                 // Text messages should only come from the server, not a peer.
                 // Otherwise ControlMessage spoofing might be possible.
-                console_log!("ignoring string message from client");
+                console_log!("improper string message from client");
+                Err(ProtocolError::BadMessage)
             }
             WebSocketIncomingMessage::Binary(msg) => {
                 let host_tag = SocketTag::HostData(nexus);
                 let Some(host_socket) = self.find_websocket(&host_tag) else {
                     console_log!("host socket {host_tag} not found");
-                    return;
+                    return Err(ProtocolError::PeerBroken);
                 };
-                if let Err(e) = host_socket.send_with_bytes(msg) {
+                host_socket.send_with_bytes(msg).map_err(|e| {
                     console_log!("error sending to host: {e}");
-                }
+                    ProtocolError::PeerBroken
+                })
             }
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, thiserror::Error)]
+pub enum ProtocolError {
+    #[error("message not allowed")]
+    BadMessage,
+    #[error("failed to send to peer")]
+    PeerBroken,
 }
