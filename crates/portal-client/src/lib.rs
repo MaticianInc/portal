@@ -79,9 +79,12 @@ impl PortalService {
     /// Set the keepalive period.
     ///
     /// A host will automatically send keepalive ping messages if the
-    /// socket is idle for this amount of time.
+    /// socket is idle for this amount of time. If no response is received
+    /// to the ping within the keepalive period, the connection will be closed.
+    /// This means that it may take up to 2x the keepalive period to detect a
+    /// network failure.
     ///
-    /// The keepalive period is 120 seconds by default.
+    /// The keepalive period is 30 seconds by default.
     ///
     /// To disable keepalives, use `Duration::MAX`.
     pub fn set_keepalive_period(&mut self, period: Duration) {
@@ -218,10 +221,22 @@ pub struct TunnelHost {
 impl TunnelHost {
     /// Wait for a client to connect.
     pub async fn next_client(&mut self) -> Option<IncomingClient> {
+        // When `true`, we have sent a keepalive message, and if we don't
+        // receive a reply we will consider the connection failed.
+        let mut connection_in_doubt = false;
+
         loop {
             // Loop sending keepalives until we receive a message.
             // This assumes that WebSocketStream is cancel-safe.
             let Ok(stream_result) = timeout(self.keepalive_period, self.ws.next()).await else {
+                if connection_in_doubt {
+                    // We have not received any messages for 2 keepalive periods.
+                    // Consider the connection failed.
+                    tracing::warn!("control connection keepalive timeout");
+                    return None;
+                } else {
+                    connection_in_doubt = true;
+                }
                 tracing::trace!("sending keepalive ping");
                 self.ws.send(Message::Ping(vec![])).await.ok()?;
                 continue;
@@ -231,6 +246,8 @@ impl TunnelHost {
                 tracing::debug!("next_client stream ending");
                 return None;
             };
+            // We received a message, so the connection is still good.
+            connection_in_doubt = false;
 
             match message {
                 Message::Text(txt_msg) => {
