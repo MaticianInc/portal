@@ -25,4 +25,4 @@ futures-util.workspace = true
 [dev-dependencies]
 clap.workspace = true
 tracing-test.workspace = true
-matic-portal-client = { version = "0.3", path = "../portal-client" }
+matic-portal-client = { version = "0.4.0-alpha1", path = "../portal-client" }
