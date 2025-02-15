@@ -4,7 +4,7 @@ description = "Client library for the Matic Portal service"
 version = "0.4.0-alpha1"
 edition = "2021"
 license = "Apache-2.0"
-rust-version = "1.70.0"
+rust-version = "1.71.1"
 authors.workspace = true
 repository.workspace = true
 
