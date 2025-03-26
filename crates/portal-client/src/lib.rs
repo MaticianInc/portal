@@ -266,6 +266,9 @@ impl TunnelHost {
                 Message::Binary(_) => {
                     tracing::warn!("ignoring binary message on host control socket");
                 }
+                Message::Close(Some(close)) => {
+                    tracing::info!("control socket closed: {close}");
+                }
                 // Ignore all other message types.
                 msg => {
                     tracing::trace!("incoming ws message {msg:?}");

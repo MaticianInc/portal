@@ -266,11 +266,25 @@ impl DurableRouter {
         Some(socket)
     }
 
+    /// Close all websockets with a given tag.
+    fn close_tagged_websockets(&self, tag: &str, reason: &str) {
+        let tag = tag.to_string();
+        for socket in self.state.get_websockets_with_tag(&tag) {
+            // Code 1001: endpoint is "going away".
+            // https://www.rfc-editor.org/rfc/rfc6455.html#section-7.4
+            let _ = socket.close(Some(1001), Some(reason));
+            console_log!("closing socket with {tag}");
+        }
+    }
+
     /// Handle incoming host control request.
     ///
     /// We will store a new host control websocket, and return its peer.
     /// Nothing more will happen until a client connects.
     async fn handle_host_control(&mut self) -> worker::Result<Response> {
+        // Kill off any existing host control sockets.
+        self.close_tagged_websockets("hc", "replaced by new host");
+
         let pair = WebSocketPair::new()?;
         let host_ws = pair.client;
         let server_ws = pair.server;
