@@ -38,7 +38,7 @@ tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 tracing-test = "0.2.4"
 tokio = "1.30.0"
 tokio-stream = "0.1.14"
-tokio-tungstenite = {version = "0.26.1", features = ["rustls-tls-native-roots"] }
+tokio-tungstenite = {version = "0.26.2", features = ["rustls-tls-native-roots"] }
 tokio-util = "0.7.8"
 url = "2.4.0"
 wasm-bindgen = "0.2.100"
