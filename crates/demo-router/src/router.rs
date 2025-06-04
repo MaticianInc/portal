@@ -125,8 +125,8 @@ impl PortalRouter {
         // build our application with a route
         let app = Router::new()
             .route("/connect/host_control", get(connect_host))
-            .route("/connect/host_accept/:nexus", get(host_accept))
-            .route("/connect/client/:service", get(connect_client))
+            .route("/connect/host_accept/{nexus}", get(host_accept))
+            .route("/connect/client/{service}", get(connect_client))
             .layer(Extension(auth))
             .with_state(state);
 
