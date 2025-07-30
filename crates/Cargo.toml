@@ -1,3 +1,9 @@
+[package]
+name = "matic-portal"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
 [workspace.package]
 repository = "https://github.com/MaticianInc/portal"
 authors = ["Eric Seppanen <eric@maticrobots.com>"]
@@ -49,3 +55,7 @@ worker = "0.5.0"
 worker-sys = "0.5.0"
 
 jwt-webcrypto = { path = "jwt-webcrypto" }
+
+[dependencies]
+matic-portal-client.path = "portal-client"
+
