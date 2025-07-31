@@ -12,7 +12,6 @@ use futures_util::{Sink, SinkExt as _, Stream, StreamExt as _};
 use matic_portal_types::{ControlMessage, Nexus};
 use pin_project::pin_project;
 use rustls::ClientConfig;
-use rustls_platform_verifier::Verifier;
 use tokio::net::TcpStream;
 use tokio::time::timeout;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
@@ -404,17 +403,14 @@ impl Sink<Bytes> for TunnelSocket {
 
 /// Make a websocket connection, using a bearer token.
 async fn websocket_connect(url: &str, token: &str) -> Result<TcpWebSocket, WsError> {
+    use rustls_platform_verifier::ConfigVerifierExt;
+
     let mut request = url.into_client_request().unwrap();
     request.headers_mut().insert(
         "authorization",
         format!("Bearer {}", token).parse().unwrap(),
     );
-    let config = Arc::new(
-        ClientConfig::builder()
-            .dangerous() // The `Verifier` we're using is actually safe
-            .with_custom_certificate_verifier(Arc::new(Verifier::new()))
-            .with_no_client_auth(),
-    );
+    let config = Arc::new(ClientConfig::with_platform_verifier().unwrap());
     let (websocket, http_response) =
         connect_async_tls_with_config(request, None, false, Some(Connector::Rustls(config)))
             .await?;
