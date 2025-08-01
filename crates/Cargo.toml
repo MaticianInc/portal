@@ -1,3 +1,9 @@
+[package]
+name = "matic-portal"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
 [workspace.package]
 repository = "https://github.com/MaticianInc/portal"
 authors = ["Eric Seppanen <eric@maticrobots.com>"]
@@ -29,7 +35,7 @@ pem = { version = "3.0.3", default-features = false }
 pin-project = "1.1.0"
 rand = "0.9.0"
 rustls-platform-verifier = "0.6.0"
-rustls = "0.23.23"
+rustls = { version = "0.23.23", default-features  = false, features = ["logging", "std", "ring"] }
 serde = { version = "1.0.187", features = ["derive"] }
 serde_json = "1.0.97"
 thiserror = "2.0.11"
@@ -49,3 +55,7 @@ worker = "0.5.0"
 worker-sys = "0.5.0"
 
 jwt-webcrypto = { path = "jwt-webcrypto" }
+
+[dependencies]
+matic-portal-client.path = "portal-client"
+

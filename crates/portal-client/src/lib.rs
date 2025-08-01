@@ -25,6 +25,13 @@ use url::Url;
 // import the exact version of tungstenite just to inspect errors.
 pub use tokio_tungstenite::tungstenite::Error as WsError;
 
+// `rustls_platform_verifier` needs to call into JVM to work on android.
+// `init_with_env` stores the reference to the `JNIEnv` in a global `OnceLock`,
+// which is used to do the JVM calls. As such, we need to enforce that the library
+// version for which `init_with_env` is called is the same as the one used here.
+#[cfg(target_os = "android")]
+pub use rustls_platform_verifier::android::init_with_env;
+
 mod tunnel_io;
 
 /// The amount of time a control socket can be idle before we send a keepalive ping.
