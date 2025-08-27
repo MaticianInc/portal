@@ -216,7 +216,7 @@ impl PortalService {
                 }
                 // Ignore all other message types.
                 msg => {
-                    tracing::warn!("incoming ws message: {msg:?}");
+                    tracing::debug!("incoming ws message: {msg:?}");
                 }
             }
         }
