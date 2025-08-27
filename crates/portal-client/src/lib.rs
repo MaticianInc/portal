@@ -216,7 +216,7 @@ impl PortalService {
                 }
                 // Ignore all other message types.
                 msg => {
-                    tracing::debug!("incoming ws message: {msg:?}");
+                    tracing::debug!("incoming unknown ws message: {msg:?}");
                 }
             }
         }
@@ -284,7 +284,7 @@ impl TunnelHost {
                 }
                 // Ignore all other message types.
                 msg => {
-                    tracing::debug!("incoming ws message {msg:?}");
+                    tracing::debug!("incoming unknown ws message {msg:?}");
                 }
             }
         }
