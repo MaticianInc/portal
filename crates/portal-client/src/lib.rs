@@ -202,6 +202,8 @@ impl PortalService {
                     };
                     if matches!(control_message, ControlMessage::Connected) {
                         return Ok(TunnelSocket { ws });
+                    } else {
+                        tracing::warn!("unexpected control message: {control_message:?}");
                     }
                 }
                 Message::Binary(_) => {
@@ -213,7 +215,9 @@ impl PortalService {
                     Err(PortalError::Protocol)?;
                 }
                 // Ignore all other message types.
-                _ => {}
+                msg => {
+                    tracing::debug!("incoming unknown ws message: {msg:?}");
+                }
             }
         }
 
@@ -268,6 +272,8 @@ impl TunnelHost {
                     };
                     if matches!(control_message, ControlMessage::Incoming { .. }) {
                         return Some(IncomingClient::new(self.service.clone(), control_message));
+                    } else {
+                        tracing::warn!("unexpected control message: {control_message:?}");
                     }
                 }
                 Message::Binary(_) => {
@@ -278,7 +284,7 @@ impl TunnelHost {
                 }
                 // Ignore all other message types.
                 msg => {
-                    tracing::trace!("incoming ws message {msg:?}");
+                    tracing::debug!("incoming unknown ws message {msg:?}");
                 }
             }
         }
