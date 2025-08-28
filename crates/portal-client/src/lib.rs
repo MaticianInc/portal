@@ -15,7 +15,10 @@ use rustls::ClientConfig;
 use tokio::net::TcpStream;
 use tokio::time::timeout;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
-use tokio_tungstenite::tungstenite::protocol::Message;
+use tokio_tungstenite::tungstenite::protocol::{
+    frame::{coding::CloseCode, Utf8Bytes},
+    CloseFrame, Message,
+};
 use tokio_tungstenite::{
     connect_async_tls_with_config, Connector, MaybeTlsStream, WebSocketStream,
 };
@@ -275,6 +278,16 @@ impl TunnelHost {
                 }
                 Message::Close(Some(close)) => {
                     tracing::info!("control socket closed: {close}");
+                    if let Err(e) = self
+                        .ws
+                        .close(Some(CloseFrame {
+                            code: CloseCode::Normal,
+                            reason: Utf8Bytes::from_static("Durable Object is closing WebSocket"),
+                        }))
+                        .await
+                    {
+                        tracing::error!("error while closing control socket: {e:?}");
+                    }
                 }
                 // Ignore all other message types.
                 msg => {
