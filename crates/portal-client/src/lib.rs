@@ -255,10 +255,18 @@ impl TunnelHost {
                 continue;
             };
 
-            let Some(Ok(message)) = stream_result else {
-                tracing::debug!("next_client stream ending");
-                return None;
+            let message = match stream_result {
+                Some(Ok(message)) => message,
+                None => {
+                    tracing::debug!("next_client stream ending");
+                    return None;
+                }
+                Some(Err(e)) => {
+                    tracing::error!("error while reading next_client stream: {e:?}");
+                    return None;
+                }
             };
+
             // We received a message, so the connection is still good.
             connection_in_doubt = false;
 
@@ -277,7 +285,10 @@ impl TunnelHost {
                     tracing::warn!("ignoring binary message on host control socket");
                 }
                 Message::Close(Some(close)) => {
-                    tracing::info!("control socket closed: {close}");
+                    tracing::info!("control socket closed: {close}, next client stream ending");
+
+                    // If the server initiates a closing handshake, we should respond with a close frame to gracefully close the connection.
+                    // Not responding with a close frame can leave the websocket in a closing state on the server side which can cause unexpected behavior.
                     if let Err(e) = self
                         .ws
                         .close(Some(CloseFrame {
@@ -288,6 +299,7 @@ impl TunnelHost {
                     {
                         tracing::error!("error while closing control socket: {e:?}");
                     }
+                    return None;
                 }
                 // Ignore all other message types.
                 msg => {
