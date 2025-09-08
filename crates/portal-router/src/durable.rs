@@ -212,6 +212,10 @@ impl DurableRouter {
                 Err(_) => console_log!("unrecognized tag {tag}"),
             }
         }
+        // Respond to any closing request we receive. This ensures that the websockets don't linger in a closing state.
+        if let Err(e) = ws.close(Some(1000), Some("Durable Object is closing WebSocket")) {
+            console_log!("error while closing websocket: {e}");
+        }
     }
 
     fn close_peer(&mut self, tag: SocketTag) {
