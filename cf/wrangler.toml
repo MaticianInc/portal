@@ -14,3 +14,7 @@ class_name = "DurableRouter"
 [[migrations]]
 tag = "v1"
 new_classes = ["DurableRouter"]
+
+[observability]
+enabled = true
+head_sampling_rate = 1  # log all invocations
