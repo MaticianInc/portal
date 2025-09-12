@@ -3,7 +3,7 @@ use std::str::FromStr;
 
 use matic_portal_types::{ControlMessage, Nexus, NexusParseError};
 use worker::{
-    console_log, durable_object, Env, Request, Response, State, WebSocket,
+    console_log, durable_object, Env, Error, Request, Response, State, WebSocket,
     WebSocketIncomingMessage, WebSocketPair,
 };
 
@@ -248,26 +248,18 @@ impl DurableRouter {
         None
     }
 
-    fn send_message(ws: &WebSocket, message: ControlMessage) {
+    fn send_message(ws: &WebSocket, message: ControlMessage) -> Result<(), Error> {
         let json_msg = serde_json::to_string(&message).unwrap();
-
-        if let Err(e) = ws.send_with_str(json_msg) {
-            console_log!("error sending control message on socket: {e}");
-        }
+        ws.send_with_str(json_msg)
     }
 
     /// Search for a websocket with a given tag.
-    fn find_websocket(&self, tag: &SocketTag) -> Option<WebSocket> {
+    fn find_websockets(&self, tag: &SocketTag) -> Vec<WebSocket> {
         let sockets = self.state.get_websockets_with_tag(&tag.to_string());
-        if sockets.is_empty() {
-            return None;
-        }
         if sockets.len() > 1 {
             console_log!("warning! multiple client sockets found for tag {tag}");
         }
-        // Take the first websocket in the list.
-        let socket = sockets.into_iter().next().unwrap();
-        Some(socket)
+        sockets
     }
 
     /// Close all websockets with a given tag.
@@ -295,10 +287,12 @@ impl DurableRouter {
 
         self.state.accept_websocket_with_tags(&server_ws, &["hc"]);
 
-        Self::send_message(
+        if let Err(e) = Self::send_message(
             &server_ws,
             ControlMessage::Status("hello host from portal-router".into()),
-        );
+        ) {
+            console_log!("error sending status message to host: {e}");
+        }
 
         Response::from_websocket(host_ws)
     }
@@ -312,7 +306,9 @@ impl DurableRouter {
         let client_tag = host_tag.to_client().unwrap();
 
         // We should only allow this connection if this client is connected.
-        let Some(client_socket) = self.find_websocket(&client_tag) else {
+        let client_sockets = self.find_websockets(&client_tag);
+        // We only expect one client socket or none.
+        let Some(client_socket) = client_sockets.into_iter().next() else {
             console_log!("client socket {client_tag} not found");
             return Response::error("client socket not available", 503);
         };
@@ -327,7 +323,9 @@ impl DurableRouter {
 
         // Inform the client that the connection is established, so it
         // knows that data transfer can begin.
-        Self::send_message(&client_socket, ControlMessage::Connected);
+        if let Err(e) = Self::send_message(&client_socket, ControlMessage::Connected) {
+            console_log!("error while sending Connected message to client: {e}");
+        }
 
         Response::from_websocket(client_ws)
     }
@@ -340,7 +338,8 @@ impl DurableRouter {
     async fn handle_client(&mut self, service_name: String) -> worker::Result<Response> {
         // We should only allow this connection if the server has already connected.
         let control_tag = SocketTag::HostControl;
-        let Some(host_socket) = self.find_websocket(&control_tag) else {
+        let host_sockets = self.find_websockets(&control_tag);
+        if host_sockets.is_empty() {
             console_log!("host socket {control_tag} not found");
             return Response::error("tunnel host not available", 503);
         };
@@ -355,23 +354,42 @@ impl DurableRouter {
 
         self.state.accept_websocket_with_tags(&server_ws, &[&tag]);
 
-        // Inform the host that a new client has arrived.
-        // The host can decide whether to accept the connection.
-        Self::send_message(
-            &host_socket,
-            ControlMessage::Incoming {
-                // FIXME: we threw away the client name in lib.rs when
-                // doing auth. Need to find a way to plumb that value through.
-                client_name: String::new(),
-                service_name,
-                nexus,
-            },
-        );
+        // Loop over all host sockets until a send is successful.
+        // Since the websocket's ready_state is not accessible to us, this ensures we send over an open socket if available.
+        let mut delivered = false;
+        for host_socket in host_sockets {
+            // Inform the host that a new client has arrived.
+            // The host can decide whether to accept the connection.
+            match Self::send_message(
+                &host_socket,
+                ControlMessage::Incoming {
+                    // FIXME: we threw away the client name in lib.rs when
+                    // doing auth. Need to find a way to plumb that value through.
+                    client_name: String::new(),
+                    service_name: service_name.clone(),
+                    nexus,
+                },
+            ) {
+                Err(e) => {
+                    console_log!("error sending incoming message to host: {e}");
+                }
+                Ok(_) => {
+                    delivered = true;
+                    break;
+                }
+            }
+        }
 
-        Self::send_message(
+        if !delivered {
+            console_log!("failed to send incoming message to any host socket");
+        }
+
+        if let Err(e) = Self::send_message(
             &server_ws,
             ControlMessage::Status("hello client from portal-router".into()),
-        );
+        ) {
+            console_log!("error sending status message to client: {e}");
+        }
 
         Response::from_websocket(client_ws)
     }
@@ -393,7 +411,8 @@ impl DurableRouter {
             }
             WebSocketIncomingMessage::Binary(msg) => {
                 let client_tag = SocketTag::ClientData(nexus);
-                let Some(client_socket) = self.find_websocket(&client_tag) else {
+                let Some(client_socket) = self.find_websockets(&client_tag).into_iter().next()
+                else {
                     console_log!("client socket {client_tag} not found");
                     return Err(ProtocolError::PeerBroken);
                 };
@@ -422,7 +441,7 @@ impl DurableRouter {
             }
             WebSocketIncomingMessage::Binary(msg) => {
                 let host_tag = SocketTag::HostData(nexus);
-                let Some(host_socket) = self.find_websocket(&host_tag) else {
+                let Some(host_socket) = self.find_websockets(&host_tag).into_iter().next() else {
                     console_log!("host socket {host_tag} not found");
                     return Err(ProtocolError::PeerBroken);
                 };
