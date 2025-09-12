@@ -73,6 +73,14 @@ fn get_url_params(ctx: &RouteContext<()>) -> Option<ServiceName> {
     Some(service)
 }
 
+/// Clone the incoming request and add the portal id header so it can be read downstream.
+fn inject_portal_id_to_header(req: &Request, portal_id: &str) -> worker::Result<Request> {
+    // Need to clone the request so we can mutate the headers.
+    let mut new_req = req.clone_mut()?;
+    new_req.headers_mut()?.set("portal-id", portal_id)?;
+    Ok(new_req)
+}
+
 /// Handle incoming host connections.
 ///
 /// This can handle host control connections as well as host data connections. It
@@ -81,7 +89,7 @@ fn get_url_params(ctx: &RouteContext<()>) -> Option<ServiceName> {
 ///
 async fn host_connect(req: Request, ctx: RouteContext<()>) -> worker::Result<Response> {
     // Check authorization
-    let claims = match check_authorization(&ctx, &req, Role::Host).await {
+    let claims: JwtClaims = match check_authorization(&ctx, &req, Role::Host).await {
         Err(e) => return e.into_response(),
         Ok(claims) => claims,
     };
@@ -93,7 +101,9 @@ async fn host_connect(req: Request, ctx: RouteContext<()>) -> worker::Result<Res
 
     let id = namespace.id_from_name(&portal_id.to_string())?;
     let stub = id.get_stub()?;
-    stub.fetch_with_request(req).await
+
+    let fwd_req = inject_portal_id_to_header(&req, &portal_id.to_string())?;
+    stub.fetch_with_request(fwd_req).await
 }
 
 /// Handle incoming connection by tunnel client.
@@ -114,5 +124,7 @@ async fn client_connect(req: Request, ctx: RouteContext<()>) -> worker::Result<R
     let namespace = ctx.durable_object("TUNNEL")?;
     let id = namespace.id_from_name(&portal_id.to_string())?;
     let stub = id.get_stub()?;
-    stub.fetch_with_request(req).await
+
+    let fwd_req = inject_portal_id_to_header(&req, &portal_id.to_string())?;
+    stub.fetch_with_request(fwd_req).await
 }

@@ -46,6 +46,7 @@ enum SocketTag {
     HostControl,
     HostData(Nexus),
     ClientData(Nexus),
+    PortalId(String),
 }
 
 impl SocketTag {
@@ -82,6 +83,7 @@ impl Display for SocketTag {
             SocketTag::HostControl => f.write_str("hc"),
             SocketTag::HostData(nexus) => write!(f, "h-{}", nexus),
             SocketTag::ClientData(nexus) => write!(f, "c-{}", nexus),
+            SocketTag::PortalId(portal_id) => write!(f, "portal-id-{}", portal_id),
         }
     }
 }
@@ -111,6 +113,9 @@ impl FromStr for SocketTag {
             let nexus = nexus_str.parse()?;
             return Ok(SocketTag::ClientData(nexus));
         }
+        if let Some(portal_id) = tag.strip_prefix("portal-id-") {
+            return Ok(SocketTag::PortalId(portal_id.to_owned()));
+        }
         Err(SocketTagParseError)
     }
 }
@@ -122,6 +127,10 @@ impl DurableObject for DurableRouter {
     }
 
     async fn fetch(&mut self, req: Request) -> worker::Result<Response> {
+        let portal_id = req.headers().get("portal-id").unwrap().unwrap();
+        // needed to associate cloudflare logs with the portal id
+        console_log!("portal id: {portal_id}");
+
         let path = req.path();
         let route = Self::parse_path(&path);
         match route {
@@ -129,9 +138,13 @@ impl DurableObject for DurableRouter {
                 console_log!("DurableRouter fetch 404");
                 Response::error("Not Found", 404)
             }
-            Some(ServiceRoute::Client(service_name)) => self.handle_client(service_name).await,
-            Some(ServiceRoute::HostControl) => self.handle_host_control().await,
-            Some(ServiceRoute::HostAccept(nexus)) => self.handle_host_accept(nexus).await,
+            Some(ServiceRoute::Client(service_name)) => {
+                self.handle_client(service_name, portal_id).await
+            }
+            Some(ServiceRoute::HostControl) => self.handle_host_control(portal_id).await,
+            Some(ServiceRoute::HostAccept(nexus)) => {
+                self.handle_host_accept(nexus, portal_id).await
+            }
         }
     }
 
@@ -145,10 +158,16 @@ impl DurableObject for DurableRouter {
         // Figure out if the sender is a host or client. Skip over any broken tags.
         let socket_tag = tags
             .iter()
-            .filter_map(|tag| {
-                tag.parse::<SocketTag>()
-                    .inspect_err(|_| console_log!("unrecognized tag {tag}"))
-                    .ok()
+            .filter_map(|tag| match tag.parse::<SocketTag>() {
+                Ok(SocketTag::PortalId(id)) => {
+                    console_log!("message sent for portal id: {id}");
+                    None // only needed for logging
+                }
+                Ok(other) => Some(other),
+                Err(_) => {
+                    console_log!("unrecognized tag {tag}");
+                    None
+                }
             })
             .next();
         let Some(socket_tag) = socket_tag else {
@@ -164,6 +183,7 @@ impl DurableObject for DurableRouter {
             }
             SocketTag::HostData(nexus) => self.message_from_host(nexus, message),
             SocketTag::ClientData(nexus) => self.message_from_client(nexus, message),
+            SocketTag::PortalId(_) => Ok(()), // should be unreachable
         };
         if result.is_err() {
             console_log!("closing sender socket due to error");
@@ -201,13 +221,17 @@ impl DurableRouter {
                 Ok(SocketTag::HostControl) => {
                     // FIXME: we should print the portal id here.
                     console_log!("host control socket closed");
-                    break;
+                    continue;
+                }
+                Ok(SocketTag::PortalId(id)) => {
+                    console_log!("socket closed on portal id {id}");
+                    continue;
                 }
                 Ok(tag) => {
                     if let Some(peer_tag) = tag.to_peer() {
                         self.close_peer(peer_tag);
                     }
-                    break;
+                    continue;
                 }
                 Err(_) => console_log!("unrecognized tag {tag}"),
             }
@@ -277,7 +301,7 @@ impl DurableRouter {
     ///
     /// We will store a new host control websocket, and return its peer.
     /// Nothing more will happen until a client connects.
-    async fn handle_host_control(&mut self) -> worker::Result<Response> {
+    async fn handle_host_control(&mut self, portal_id: String) -> worker::Result<Response> {
         // Kill off any existing host control sockets.
         self.close_tagged_websockets("hc", "replaced by new host");
 
@@ -285,7 +309,9 @@ impl DurableRouter {
         let host_ws = pair.client;
         let server_ws = pair.server;
 
-        self.state.accept_websocket_with_tags(&server_ws, &["hc"]);
+        let portal_id_tag = format!("portal-id-{}", portal_id);
+        self.state
+            .accept_websocket_with_tags(&server_ws, &["hc", &portal_id_tag]);
 
         if let Err(e) = Self::send_message(
             &server_ws,
@@ -301,7 +327,11 @@ impl DurableRouter {
     ///
     /// We will store a new host websocket, and return its peer.
     /// We will also send a connected message to the corresponding client.
-    async fn handle_host_accept(&mut self, nexus: Nexus) -> worker::Result<Response> {
+    async fn handle_host_accept(
+        &mut self,
+        nexus: Nexus,
+        portal_id: String,
+    ) -> worker::Result<Response> {
         let host_tag = SocketTag::HostData(nexus);
         let client_tag = host_tag.to_client().unwrap();
 
@@ -318,8 +348,9 @@ impl DurableRouter {
         let client_ws = pair.client;
         let server_ws = pair.server;
 
+        let portal_id_tag = format!("portal-id-{}", portal_id);
         self.state
-            .accept_websocket_with_tags(&server_ws, &[&host_tag.to_string()]);
+            .accept_websocket_with_tags(&server_ws, &[&host_tag.to_string(), &portal_id_tag]);
 
         // Inform the client that the connection is established, so it
         // knows that data transfer can begin.
@@ -335,7 +366,11 @@ impl DurableRouter {
     /// If the `DurableRouter` is healthy, we will generate a new websocket
     /// for this client, and move messages back and forth between the host
     /// and this client.
-    async fn handle_client(&mut self, service_name: String) -> worker::Result<Response> {
+    async fn handle_client(
+        &mut self,
+        service_name: String,
+        portal_id: String,
+    ) -> worker::Result<Response> {
         // We should only allow this connection if the server has already connected.
         let control_tag = SocketTag::HostControl;
         let host_sockets = self.find_websockets(&control_tag);
@@ -352,7 +387,9 @@ impl DurableRouter {
         let nexus = random_nexus();
         let tag = SocketTag::ClientData(nexus).to_string();
 
-        self.state.accept_websocket_with_tags(&server_ws, &[&tag]);
+        let portal_id_tag = format!("portal-id-{}", portal_id);
+        self.state
+            .accept_websocket_with_tags(&server_ws, &[&tag, &portal_id_tag]);
 
         // Loop over all host sockets until a send is successful.
         // Since the websocket's ready_state is not accessible to us, this ensures we send over an open socket if available.
