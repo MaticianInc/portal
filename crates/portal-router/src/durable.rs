@@ -41,12 +41,61 @@ fn random_nexus() -> Nexus {
     Nexus::new(nexus_int)
 }
 
+struct SocketInfo {
+    portal_id: Option<String>,
+    socket_tag: SocketTag,
+}
+
+impl SocketInfo {
+    fn to_tags(&self) -> Vec<String> {
+        let mut tags = vec![];
+        if let Some(portal_id) = &self.portal_id {
+            tags.push(format!("portal-id-{}", portal_id));
+        }
+        tags.push(self.socket_tag.to_string());
+        tags
+    }
+}
+
+impl TryFrom<Vec<String>> for SocketInfo {
+    type Error = SocketTagParseError;
+
+    fn try_from(tags: Vec<String>) -> Result<Self, Self::Error> {
+        let mut portal_id = None;
+        let mut socket_tag = None;
+
+        for tag in tags {
+            if let Some(pid) = tag.strip_prefix("portal-id-") {
+                let prev = portal_id.replace(pid.to_owned());
+                if let Some(prev) = prev {
+                    console_log!("multiple portal id tags found, ignoring {prev}");
+                }
+                continue;
+            }
+
+            match tag.parse::<SocketTag>() {
+                Ok(st) => {
+                    let prev = socket_tag.replace(st);
+                    if let Some(prev) = prev {
+                        console_log!("multiple socket tags found, ignoring {prev}");
+                    }
+                }
+                Err(_) => console_log!("unrecognized tag {tag}"),
+            }
+        }
+
+        Ok(Self {
+            portal_id,
+            socket_tag: socket_tag.ok_or(SocketTagParseError)?,
+        })
+    }
+}
+
 #[derive(Debug, Clone)]
 enum SocketTag {
     HostControl,
     HostData(Nexus),
     ClientData(Nexus),
-    PortalId(String),
 }
 
 impl SocketTag {
@@ -83,7 +132,6 @@ impl Display for SocketTag {
             SocketTag::HostControl => f.write_str("hc"),
             SocketTag::HostData(nexus) => write!(f, "h-{}", nexus),
             SocketTag::ClientData(nexus) => write!(f, "c-{}", nexus),
-            SocketTag::PortalId(portal_id) => write!(f, "portal-id-{}", portal_id),
         }
     }
 }
@@ -113,9 +161,6 @@ impl FromStr for SocketTag {
             let nexus = nexus_str.parse()?;
             return Ok(SocketTag::ClientData(nexus));
         }
-        if let Some(portal_id) = tag.strip_prefix("portal-id-") {
-            return Ok(SocketTag::PortalId(portal_id.to_owned()));
-        }
         Err(SocketTagParseError)
     }
 }
@@ -127,9 +172,9 @@ impl DurableObject for DurableRouter {
     }
 
     async fn fetch(&mut self, req: Request) -> worker::Result<Response> {
-        let portal_id = req.headers().get("portal-id").unwrap().unwrap();
-        // needed to associate cloudflare logs with the portal id
-        console_log!("portal id: {portal_id}");
+        let Ok(Some(portal_id)) = req.headers().get("portal-id") else {
+            return Response::error("No portal id found", 400);
+        };
 
         let path = req.path();
         let route = Self::parse_path(&path);
@@ -156,26 +201,15 @@ impl DurableObject for DurableRouter {
         let tags = self.state.get_tags(&ws);
 
         // Figure out if the sender is a host or client. Skip over any broken tags.
-        let socket_tag = tags
-            .iter()
-            .filter_map(|tag| match tag.parse::<SocketTag>() {
-                Ok(SocketTag::PortalId(id)) => {
-                    console_log!("message sent for portal id: {id}");
-                    None // only needed for logging
-                }
-                Ok(other) => Some(other),
-                Err(_) => {
-                    console_log!("unrecognized tag {tag}");
-                    None
-                }
-            })
-            .next();
-        let Some(socket_tag) = socket_tag else {
+        let socket_info = SocketInfo::try_from(tags).map_err(|_| {
             // FIXME: is there a better way to compose this error?
-            return Err(worker::Error::RustError("missing peer".into()));
-        };
+            worker::Error::RustError("missing peer".into())
+        })?;
+        if let Some(portal_id) = socket_info.portal_id {
+            console_log!("message sent for portal id: {portal_id}");
+        }
 
-        let result = match socket_tag {
+        let result = match socket_info.socket_tag {
             SocketTag::HostControl => {
                 // Well-behaved hosts should not do this.
                 console_log!("warning: host sent a message on host control socket");
@@ -183,7 +217,6 @@ impl DurableObject for DurableRouter {
             }
             SocketTag::HostData(nexus) => self.message_from_host(nexus, message),
             SocketTag::ClientData(nexus) => self.message_from_client(nexus, message),
-            SocketTag::PortalId(_) => Ok(()), // should be unreachable
         };
         if result.is_err() {
             console_log!("closing sender socket due to error");
@@ -201,45 +234,41 @@ impl DurableObject for DurableRouter {
         _was_clean: bool,
     ) -> worker::Result<()> {
         console_log!("websocket close, code {code} reason {reason}");
-        self.handle_websocket_close(ws);
-        Ok(())
+        self.handle_websocket_close(ws)
     }
 
     async fn websocket_error(&mut self, ws: WebSocket, error: worker::Error) -> worker::Result<()> {
         console_log!("websocket error {error}");
-        self.handle_websocket_close(ws);
-        Ok(())
+        self.handle_websocket_close(ws)
     }
 }
 
 impl DurableRouter {
-    fn handle_websocket_close(&mut self, ws: WebSocket) {
+    fn handle_websocket_close(&mut self, ws: WebSocket) -> worker::Result<()> {
         let tags = self.state.get_tags(&ws);
 
-        for tag in tags {
-            match tag.parse::<SocketTag>() {
-                Ok(SocketTag::HostControl) => {
-                    // FIXME: we should print the portal id here.
-                    console_log!("host control socket closed");
-                    continue;
+        let socket_info = SocketInfo::try_from(tags)
+            .map_err(|_| worker::Error::RustError("missing peer".into()))?;
+
+        if let Some(portal_id) = socket_info.portal_id {
+            console_log!("socket closed on portal id {portal_id}");
+        }
+
+        match socket_info.socket_tag {
+            SocketTag::HostControl => {
+                console_log!("host control socket closed");
+            }
+            tag => {
+                if let Some(peer_tag) = tag.to_peer() {
+                    self.close_peer(peer_tag);
                 }
-                Ok(SocketTag::PortalId(id)) => {
-                    console_log!("socket closed on portal id {id}");
-                    continue;
-                }
-                Ok(tag) => {
-                    if let Some(peer_tag) = tag.to_peer() {
-                        self.close_peer(peer_tag);
-                    }
-                    continue;
-                }
-                Err(_) => console_log!("unrecognized tag {tag}"),
             }
         }
         // Respond to any closing request we receive. This ensures that the websockets don't linger in a closing state.
         if let Err(e) = ws.close(Some(1000), Some("Durable Object is closing WebSocket")) {
             console_log!("error while closing websocket: {e}");
         }
+        Ok(())
     }
 
     fn close_peer(&mut self, tag: SocketTag) {
@@ -309,9 +338,15 @@ impl DurableRouter {
         let host_ws = pair.client;
         let server_ws = pair.server;
 
-        let portal_id_tag = format!("portal-id-{}", portal_id);
-        self.state
-            .accept_websocket_with_tags(&server_ws, &["hc", &portal_id_tag]);
+        let socket_info = SocketInfo {
+            portal_id: Some(portal_id),
+            socket_tag: SocketTag::HostControl,
+        };
+        let tags = socket_info.to_tags();
+        self.state.accept_websocket_with_tags(
+            &server_ws,
+            &tags.iter().map(|tag| tag.as_str()).collect::<Vec<_>>(),
+        );
 
         if let Err(e) = Self::send_message(
             &server_ws,
@@ -348,9 +383,15 @@ impl DurableRouter {
         let client_ws = pair.client;
         let server_ws = pair.server;
 
-        let portal_id_tag = format!("portal-id-{}", portal_id);
-        self.state
-            .accept_websocket_with_tags(&server_ws, &[&host_tag.to_string(), &portal_id_tag]);
+        let socket_info = SocketInfo {
+            portal_id: Some(portal_id),
+            socket_tag: host_tag,
+        };
+        let tags = socket_info.to_tags();
+        self.state.accept_websocket_with_tags(
+            &server_ws,
+            &tags.iter().map(|tag| tag.as_str()).collect::<Vec<_>>(),
+        );
 
         // Inform the client that the connection is established, so it
         // knows that data transfer can begin.
@@ -385,11 +426,15 @@ impl DurableRouter {
 
         // Generate a random nexus value so we can match host and client sockets.
         let nexus = random_nexus();
-        let tag = SocketTag::ClientData(nexus).to_string();
-
-        let portal_id_tag = format!("portal-id-{}", portal_id);
-        self.state
-            .accept_websocket_with_tags(&server_ws, &[&tag, &portal_id_tag]);
+        let socket_info = SocketInfo {
+            portal_id: Some(portal_id),
+            socket_tag: SocketTag::ClientData(nexus),
+        };
+        let tags = socket_info.to_tags();
+        self.state.accept_websocket_with_tags(
+            &server_ws,
+            &tags.iter().map(|tag| tag.as_str()).collect::<Vec<_>>(),
+        );
 
         // Loop over all host sockets until a send is successful.
         // Since the websocket's ready_state is not accessible to us, this ensures we send over an open socket if available.
