@@ -67,6 +67,7 @@ impl TryFrom<Vec<String>> for SocketInfo {
         for tag in tags {
             if let Some(pid) = tag.strip_prefix("portal-id-") {
                 let prev = portal_id.replace(pid.to_owned());
+                // We only expect one portal id tag
                 if let Some(prev) = prev {
                     console_log!("multiple portal id tags found, ignoring {prev}");
                 }
@@ -76,6 +77,7 @@ impl TryFrom<Vec<String>> for SocketInfo {
             match tag.parse::<SocketTag>() {
                 Ok(st) => {
                     let prev = socket_tag.replace(st);
+                    // We only expect one socket type tag
                     if let Some(prev) = prev {
                         console_log!("multiple socket tags found, ignoring {prev}");
                     }
@@ -493,6 +495,8 @@ impl DurableRouter {
             }
             WebSocketIncomingMessage::Binary(msg) => {
                 let client_tag = SocketTag::ClientData(nexus);
+                // We only expect one client socket since a nexus is randomly generated for each connection.
+                // If there are multiple, we log a warning in find_websockets.
                 let Some(client_socket) = self.find_websockets(&client_tag).into_iter().next()
                 else {
                     console_log!("client socket {client_tag} not found");
@@ -523,6 +527,8 @@ impl DurableRouter {
             }
             WebSocketIncomingMessage::Binary(msg) => {
                 let host_tag = SocketTag::HostData(nexus);
+                // We only expect one host socket since a nexus is randomly generated for each connection.
+                // If there are multiple, we log a warning in find_websockets.
                 let Some(host_socket) = self.find_websockets(&host_tag).into_iter().next() else {
                     console_log!("host socket {host_tag} not found");
                     return Err(ProtocolError::PeerBroken);
