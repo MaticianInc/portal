@@ -42,29 +42,29 @@ fn random_nexus() -> Nexus {
 }
 
 struct SocketInfo {
-    portal_id: Option<String>,
+    portal_id: String,
     socket_tag: SocketTag,
 }
 
 impl SocketInfo {
     fn to_tags(&self) -> Vec<String> {
-        let mut tags = vec![];
-        if let Some(portal_id) = &self.portal_id {
-            tags.push(format!("portal-id-{}", portal_id));
-        }
-        tags.push(self.socket_tag.to_string());
-        tags
+        vec![
+            format!("portal-id-{}", self.portal_id),
+            self.socket_tag.to_string(),
+        ]
     }
-}
 
-impl TryFrom<Vec<String>> for SocketInfo {
-    type Error = SocketTagParseError;
-
-    fn try_from(tags: Vec<String>) -> Result<Self, Self::Error> {
+    fn try_from_tags<I, S>(tags: I) -> Result<Self, SocketTagParseError>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
         let mut portal_id = None;
         let mut socket_tag = None;
 
         for tag in tags {
+            let tag = tag.as_ref();
+
             if let Some(pid) = tag.strip_prefix("portal-id-") {
                 let prev = portal_id.replace(pid.to_owned());
                 // We only expect one portal id tag
@@ -86,9 +86,12 @@ impl TryFrom<Vec<String>> for SocketInfo {
             }
         }
 
+        let portal_id = portal_id.ok_or(SocketTagParseError)?;
+        let socket_tag = socket_tag.ok_or(SocketTagParseError)?;
+
         Ok(Self {
             portal_id,
-            socket_tag: socket_tag.ok_or(SocketTagParseError)?,
+            socket_tag,
         })
     }
 }
@@ -203,13 +206,11 @@ impl DurableObject for DurableRouter {
         let tags = self.state.get_tags(&ws);
 
         // Figure out if the sender is a host or client. Skip over any broken tags.
-        let socket_info = SocketInfo::try_from(tags).map_err(|_| {
+        let socket_info = SocketInfo::try_from_tags(tags).map_err(|_| {
             // FIXME: is there a better way to compose this error?
-            worker::Error::RustError("missing peer".into())
+            worker::Error::RustError("missing peer and/or portal id".into())
         })?;
-        if let Some(portal_id) = socket_info.portal_id {
-            console_log!("message sent for portal id: {portal_id}");
-        }
+        console_log!("message sent for portal id: {}", socket_info.portal_id);
 
         let result = match socket_info.socket_tag {
             SocketTag::HostControl => {
@@ -249,12 +250,10 @@ impl DurableRouter {
     fn handle_websocket_close(&mut self, ws: WebSocket) -> worker::Result<()> {
         let tags = self.state.get_tags(&ws);
 
-        let socket_info = SocketInfo::try_from(tags)
-            .map_err(|_| worker::Error::RustError("missing peer".into()))?;
+        let socket_info = SocketInfo::try_from_tags(tags)
+            .map_err(|_| worker::Error::RustError("missing peer and/or portal id".into()))?;
 
-        if let Some(portal_id) = socket_info.portal_id {
-            console_log!("socket closed on portal id {portal_id}");
-        }
+        console_log!("socket closed on portal id {}", socket_info.portal_id);
 
         match socket_info.socket_tag {
             SocketTag::HostControl => {
@@ -341,7 +340,7 @@ impl DurableRouter {
         let server_ws = pair.server;
 
         let socket_info = SocketInfo {
-            portal_id: Some(portal_id),
+            portal_id,
             socket_tag: SocketTag::HostControl,
         };
         let tags = socket_info.to_tags();
@@ -386,7 +385,7 @@ impl DurableRouter {
         let server_ws = pair.server;
 
         let socket_info = SocketInfo {
-            portal_id: Some(portal_id),
+            portal_id,
             socket_tag: host_tag,
         };
         let tags = socket_info.to_tags();
@@ -429,7 +428,7 @@ impl DurableRouter {
         // Generate a random nexus value so we can match host and client sockets.
         let nexus = random_nexus();
         let socket_info = SocketInfo {
-            portal_id: Some(portal_id),
+            portal_id,
             socket_tag: SocketTag::ClientData(nexus),
         };
         let tags = socket_info.to_tags();
