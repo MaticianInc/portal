@@ -47,8 +47,8 @@ struct SocketInfo {
 }
 
 impl SocketInfo {
-    fn to_tags(&self) -> Vec<String> {
-        vec![
+    fn to_tags(&self) -> [String; 2] {
+        [
             format!("portal-id-{}", self.portal_id),
             self.socket_tag.to_string(),
         ]
@@ -344,10 +344,8 @@ impl DurableRouter {
             socket_tag: SocketTag::HostControl,
         };
         let tags = socket_info.to_tags();
-        self.state.accept_websocket_with_tags(
-            &server_ws,
-            &tags.iter().map(|tag| tag.as_str()).collect::<Vec<_>>(),
-        );
+        self.state
+            .accept_websocket_with_tags(&server_ws, tags.each_ref().map(String::as_str).as_slice());
 
         if let Err(e) = Self::send_message(
             &server_ws,
@@ -391,7 +389,7 @@ impl DurableRouter {
         let tags = socket_info.to_tags();
         self.state.accept_websocket_with_tags(
             &server_ws,
-            &tags.iter().map(|tag| tag.as_str()).collect::<Vec<_>>(),
+            &tags.each_ref().map(String::as_str).as_slice(),
         );
 
         // Inform the client that the connection is established, so it
@@ -434,7 +432,7 @@ impl DurableRouter {
         let tags = socket_info.to_tags();
         self.state.accept_websocket_with_tags(
             &server_ws,
-            &tags.iter().map(|tag| tag.as_str()).collect::<Vec<_>>(),
+            &tags.each_ref().map(String::as_str).as_slice(),
         );
 
         // Loop over all host sockets until a send is successful.
