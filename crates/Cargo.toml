@@ -52,10 +52,10 @@ wasm-bindgen-futures = "0.4.50"
 wasm-bindgen-test = "0.3.50"
 web-sys = { version = "0.3.77", features = ["Crypto", "CryptoKey", "SubtleCrypto", "HmacImportParams", "EcKeyImportParams", "EcdsaParams", "Window", "console"] }
 worker = "0.5.0"
+worker-build = "0.1.2"
 worker-sys = "0.5.0"
 
 jwt-webcrypto = { path = "jwt-webcrypto" }
 
 [dependencies]
 matic-portal-client.path = "portal-client"
-

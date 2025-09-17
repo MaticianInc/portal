@@ -31,7 +31,7 @@ resources.
 
 ## Deploying the service to cloudflare:
 
-These steps require [Wrangler], npm, and wasm-pack.
+These steps require [Wrangler], npm,  worker-build 0.1.2 and wasm-pack.
 
 [Wrangler]: https://developers.cloudflare.com/workers/wrangler/
 
@@ -76,7 +76,7 @@ Create a host and client token as above. Then run the host and client as follows
 
 Run a host that offers to tunnel connections to `myserver` port 80:
 ```txt
-RUST_LOG=debug cargo run --example tcp-forward -- --server ws://localhost:8787 --service my_tcp_service --reconnect host --target-host myserver --target-port 80
+RUST_LOG=debug cargo run --example tcp-forward -- --server ws://localhost:8787 --service my_tcp_service --reconnect host --target-host <myserver> --target-port 80
 ```
 
 Run a client that opens a local port 8000 and proxies data through the tunnel.
@@ -86,7 +86,7 @@ RUST_LOG=debug cargo run --example tcp-forward -- --server ws://localhost:8787 -
 
 ### Deploying to CloudFlare
 
-Set the jwt token secret:
+If you need to reset the portal secret:
 ```txt
 $ npx wrangler secret put jwt_secret
 ```
