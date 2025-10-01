@@ -253,7 +253,11 @@ impl DurableRouter {
         let socket_info = SocketInfo::try_from_tags(tags)
             .map_err(|_| worker::Error::RustError("missing peer and/or portal id".into()))?;
 
-        console_log!("socket closed on portal id {}", socket_info.portal_id);
+        console_log!(
+            "socket {} closed on portal id {}",
+            socket_info.socket_tag,
+            socket_info.portal_id
+        );
 
         match socket_info.socket_tag {
             SocketTag::HostControl => {
@@ -463,6 +467,7 @@ impl DurableRouter {
 
         if !delivered {
             console_log!("failed to send incoming message to any host socket");
+            return Response::error("tunnel host not available: no open connections", 503);
         }
 
         if let Err(e) = Self::send_message(
