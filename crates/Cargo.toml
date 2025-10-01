@@ -59,3 +59,4 @@ jwt-webcrypto = { path = "jwt-webcrypto" }
 
 [dependencies]
 matic-portal-client.path = "portal-client"
+matic-portal-types.path = "portal-types"
