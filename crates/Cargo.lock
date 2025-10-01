@@ -942,7 +942,6 @@ name = "matic-portal"
 version = "0.1.0"
 dependencies = [
  "matic-portal-client",
- "matic-portal-types",
 ]
 
 [[package]]
