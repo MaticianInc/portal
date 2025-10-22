@@ -130,7 +130,13 @@ impl PortalService {
     pub async fn tunnel_host(&self, token: &str) -> Result<TunnelHost, PortalError> {
         let url = self.host_url();
         tracing::debug!("tunnel_host {url}");
-        let ws = websocket_connect(url.as_str(), token).await?;
+        let timeout_result = timeout(
+            Duration::from_secs(10),
+            websocket_connect(url.as_str(), token),
+        )
+        .await
+        .map_err(|_| PortalError::Timeout)?;
+        let ws = timeout_result?;
 
         Ok(TunnelHost {
             service: self.clone(),
@@ -147,7 +153,13 @@ impl PortalService {
     ) -> Result<TunnelSocket, PortalError> {
         let url = self.host_accept_url(nexus);
         tracing::debug!("accept_connection {url}");
-        let ws = websocket_connect(url.as_str(), token).await?;
+        let timeout_result = timeout(
+            Duration::from_secs(10),
+            websocket_connect(url.as_str(), token),
+        )
+        .await
+        .map_err(|_| PortalError::Timeout)?;
+        let ws = timeout_result?;
 
         Ok(TunnelSocket { ws })
     }
