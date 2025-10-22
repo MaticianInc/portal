@@ -459,8 +459,10 @@ impl DurableRouter {
                     console_log!("error sending incoming message to host: {e}");
                 }
                 Ok(_) => {
+                    if delivered {
+                        console_log!("warning! found multiple open host control sockets");
+                    }
                     delivered = true;
-                    break;
                 }
             }
         }
