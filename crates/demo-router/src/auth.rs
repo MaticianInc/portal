@@ -8,7 +8,7 @@ use axum_extra::headers::Authorization;
 use axum_extra::TypedHeader;
 use jsonwebtoken::{DecodingKey, Validation};
 
-use matic_portal_types::{JwtClaims, Role};
+use matic_portal_types::{JwtClaims, Role, PORTAL_JWT_AUDIENCE, PORTAL_JWT_ISSUER};
 
 /// A wrapper around `JwtClaims` so we can impl additional methods and traits.
 pub struct Claims(JwtClaims);
@@ -26,6 +26,21 @@ impl Claims {
         if self.0.role != role {
             tracing::error!("{} does not have role {:?}", self.0.sub, role);
             return Err(StatusCode::UNAUTHORIZED);
+        }
+        // Reject tokens that carry an unexpected issuer or audience.
+        // Tokens without iss/aud are still accepted for backward compatibility;
+        // once all token issuers populate these fields, tighten to require them.
+        if let Some(ref iss) = self.0.iss {
+            if iss != PORTAL_JWT_ISSUER {
+                tracing::error!("{} has unexpected issuer {:?}", self.0.sub, iss);
+                return Err(StatusCode::UNAUTHORIZED);
+            }
+        }
+        if let Some(ref aud) = self.0.aud {
+            if aud != PORTAL_JWT_AUDIENCE {
+                tracing::error!("{} has unexpected audience {:?}", self.0.sub, aud);
+                return Err(StatusCode::UNAUTHORIZED);
+            }
         }
         Ok(())
     }
@@ -93,8 +108,10 @@ impl Auth {
         let decoding_key = DecodingKey::from_secret(secret.as_bytes());
 
         let mut validator = Validation::default();
-        // FIXME: add "iss" (issuer) and "aud" (audience) claims.
         validator.set_required_spec_claims(&["exp"]);
+        // Issuer and audience are validated post-decode in `Claims::check` so
+        // that legacy tokens without these fields are still accepted.
+        validator.validate_aud = false;
 
         Self {
             validator,

@@ -3,7 +3,7 @@ use std::time::{Duration, SystemTime};
 use clap::Parser;
 
 use jsonwebtoken::{EncodingKey, Header};
-use matic_portal_types::{JwtClaims, Role};
+use matic_portal_types::{JwtClaims, Role, PORTAL_JWT_AUDIENCE, PORTAL_JWT_ISSUER};
 
 #[derive(Debug, Parser)]
 struct Arguments {
@@ -52,6 +52,8 @@ fn make_token(args: &Arguments) -> Option<String> {
         exp: make_expiration(lifetime),
         role: args.role,
         portal_id: args.portal_id.into(),
+        iss: Some(PORTAL_JWT_ISSUER.to_owned()),
+        aud: Some(PORTAL_JWT_AUDIENCE.to_owned()),
     };
 
     let encoding_key = EncodingKey::from_secret(args.secret.as_bytes());
