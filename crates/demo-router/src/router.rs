@@ -147,6 +147,14 @@ async fn connect_host(
 
     tracing::debug!("connect_host portal {portal_id}");
 
+    // Reject the connection if a host is already connected for this portal_id.
+    // This prevents host displacement attacks where an attacker with a valid
+    // host JWT silently replaces the real robot's connection.
+    if state.hosts.contains_key(&portal_id) {
+        tracing::warn!("rejecting host connection: portal {portal_id} already has an active host");
+        return StatusCode::CONFLICT.into_response();
+    }
+
     // Note this runs tokio::spawn on handle_socket
     ws.on_upgrade(move |ws| async move { state.insert_host_ws(portal_id, ws) })
         .into_response()
