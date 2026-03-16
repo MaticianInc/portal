@@ -1,6 +1,9 @@
 use jwt_webcrypto::{Algorithm, Validator};
 use matic_portal_types::JwtClaims;
 
+/// Maximum allowed token lifetime: 30 days.
+const MAX_TOKEN_LIFETIME_SECS: u64 = 30 * 24 * 60 * 60;
+
 #[derive(Debug, Clone, Copy)]
 pub struct ValidationError;
 
@@ -26,6 +29,14 @@ impl TokenValidator {
             .map_err(|_| ValidationError)?;
 
         let claims: JwtClaims = serde_json::from_slice(&payload).map_err(|_| ValidationError)?;
+
+        // Reject tokens with excessively long lifetimes.
+        let now_secs = (js_sys::Date::now() / 1000.0) as u64;
+        let exp = claims.exp as u64;
+        if exp.saturating_sub(now_secs) > MAX_TOKEN_LIFETIME_SECS {
+            return Err(ValidationError);
+        }
+
         Ok(claims)
     }
 }

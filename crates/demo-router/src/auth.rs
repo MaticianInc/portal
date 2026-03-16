@@ -1,5 +1,6 @@
 use std::ops::Deref;
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use axum::extract::FromRequestParts;
 use axum::http::StatusCode;
@@ -9,6 +10,9 @@ use axum_extra::TypedHeader;
 use jsonwebtoken::{DecodingKey, Validation};
 
 use matic_portal_types::{JwtClaims, Role};
+
+/// Maximum allowed token lifetime: 30 days.
+const MAX_TOKEN_LIFETIME_SECS: u64 = 30 * 24 * 60 * 60;
 
 /// A wrapper around `JwtClaims` so we can impl additional methods and traits.
 pub struct Claims(JwtClaims);
@@ -25,6 +29,16 @@ impl Claims {
     pub fn check(&self, role: Role) -> Result<(), StatusCode> {
         if self.0.role != role {
             tracing::error!("{} does not have role {:?}", self.0.sub, role);
+            return Err(StatusCode::UNAUTHORIZED);
+        }
+        // Reject tokens with excessively long lifetimes.
+        let now_secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let exp = self.0.exp as u64;
+        if exp.saturating_sub(now_secs) > MAX_TOKEN_LIFETIME_SECS {
+            tracing::error!("{} token exp too far in future ({exp})", self.0.sub);
             return Err(StatusCode::UNAUTHORIZED);
         }
         Ok(())
