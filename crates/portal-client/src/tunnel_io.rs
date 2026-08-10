@@ -2,7 +2,7 @@
 
 use std::future::Future;
 use std::io::{self, Cursor};
-use std::pin::{pin, Pin};
+use std::pin::Pin;
 use std::task::{ready, Context, Poll};
 use std::time::Duration;
 
