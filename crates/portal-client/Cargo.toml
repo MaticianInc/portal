@@ -1,7 +1,7 @@
 [package]
 name = "matic-portal-client"
 description = "Client library for the Matic Portal service"
-version = "0.4.0"
+version = "0.4.1"
 edition = "2021"
 license = "Apache-2.0"
 rust-version = "1.71.1"
@@ -24,6 +24,7 @@ tokio-util = { workspace = true, features = ["io"] }
 rustls-platform-verifier.workspace = true
 rustls.workspace = true
 url.workspace = true
+webpki-roots.workspace = true
 
 [dev-dependencies]
 clap.workspace = true

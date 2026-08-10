@@ -11,7 +11,7 @@ use bytes::Bytes;
 use futures_util::{Sink, SinkExt as _, Stream, StreamExt as _};
 use matic_portal_types::{ControlMessage, Nexus};
 use pin_project::pin_project;
-use rustls::ClientConfig;
+use rustls::{ClientConfig, RootCertStore};
 use tokio::net::TcpStream;
 use tokio::time::timeout;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
@@ -71,21 +71,69 @@ impl Display for PortalError {
     }
 }
 
+/// How the TLS connection to the portal service is authenticated.
+#[derive(Clone, Debug)]
+enum TlsConfig {
+    /// Delegate certificate verification to the operating system.
+    Platform,
+    /// Use a caller-supplied rustls configuration.
+    Custom(Arc<ClientConfig>),
+}
+
+/// Build a TLS configuration that trusts the `webpki-roots` CA bundle.
+///
+/// Pass this to [`PortalService::new_with_tls`] on platforms where the
+/// operating system's verifier is unusable. Android's verifier reports
+/// `Revoked` for any certificate that omits an OCSP responder URL, which
+/// includes every certificate issued by a CA that has retired OCSP in favor
+/// of CRLs — Let's Encrypt and Google Trust Services among them.
+///
+/// This bundle is compiled into the binary, so it does not pick up
+/// CAs added to the operating system's trust store.
+pub fn webpki_roots_tls_config() -> Arc<ClientConfig> {
+    Arc::new(
+        ClientConfig::builder()
+            .with_root_certificates(webpki_root_store())
+            .with_no_client_auth(),
+    )
+}
+
+fn webpki_root_store() -> RootCertStore {
+    RootCertStore {
+        roots: webpki_roots::TLS_SERVER_ROOTS.to_vec(),
+    }
+}
+
 /// An object representing the portal service we want to connect to.
 #[derive(Clone, Debug)]
 pub struct PortalService {
     url: Url,
     keepalive_period: Duration,
+    tls: TlsConfig,
 }
 
 impl PortalService {
     /// Specify the URL for the tunnel service.
+    ///
+    /// Certificates are verified by the operating system. Callers that need a
+    /// different trust anchor set — notably Android clients, see
+    /// [`webpki_roots_tls_config`] — should use [`Self::new_with_tls`].
     pub fn new(url: &str) -> Result<Self, UrlError> {
+        Self::build(url, TlsConfig::Platform)
+    }
+
+    /// Specify the URL for the tunnel service, and the TLS configuration used to reach it.
+    pub fn new_with_tls(url: &str, tls_config: Arc<ClientConfig>) -> Result<Self, UrlError> {
+        Self::build(url, TlsConfig::Custom(tls_config))
+    }
+
+    fn build(url: &str, tls: TlsConfig) -> Result<Self, UrlError> {
         let url = Url::parse(url).map_err(|_| UrlError)?;
         // FIXME: reject the url if it contains a path or any query parameters.
         Ok(Self {
             url,
             keepalive_period: DEFAULT_KEEPALIVE_PERIOD,
+            tls,
         })
     }
 
@@ -132,7 +180,7 @@ impl PortalService {
         tracing::debug!("tunnel_host {url}");
         let timeout_result = timeout(
             Duration::from_secs(10),
-            websocket_connect(url.as_str(), token),
+            websocket_connect(url.as_str(), token, &self.tls),
         )
         .await
         .map_err(|_| PortalError::Timeout)?;
@@ -155,7 +203,7 @@ impl PortalService {
         tracing::debug!("accept_connection {url}");
         let timeout_result = timeout(
             Duration::from_secs(10),
-            websocket_connect(url.as_str(), token),
+            websocket_connect(url.as_str(), token, &self.tls),
         )
         .await
         .map_err(|_| PortalError::Timeout)?;
@@ -202,7 +250,7 @@ impl PortalService {
     ) -> Result<TunnelSocket, PortalError> {
         let url = self.client_url(service);
         tracing::debug!("tunnel_client {url}");
-        let mut ws = websocket_connect(url.as_str(), token).await?;
+        let mut ws = websocket_connect(url.as_str(), token, &self.tls).await?;
 
         // A client must wait for a Connected message before it is allowed to transmit.
         // FIXME: add a built-in timeout here, so that naive callers won't wait forever.
@@ -452,7 +500,11 @@ impl Sink<Bytes> for TunnelSocket {
 }
 
 /// Make a websocket connection, using a bearer token.
-async fn websocket_connect(url: &str, token: &str) -> Result<TcpWebSocket, WsError> {
+async fn websocket_connect(
+    url: &str,
+    token: &str,
+    tls: &TlsConfig,
+) -> Result<TcpWebSocket, WsError> {
     use rustls_platform_verifier::ConfigVerifierExt;
 
     let mut request = url.into_client_request().unwrap();
@@ -460,10 +512,30 @@ async fn websocket_connect(url: &str, token: &str) -> Result<TcpWebSocket, WsErr
         "authorization",
         format!("Bearer {}", token).parse().unwrap(),
     );
-    let config = Arc::new(ClientConfig::with_platform_verifier().unwrap());
+    let config = match tls {
+        TlsConfig::Platform => Arc::new(ClientConfig::with_platform_verifier().unwrap()),
+        TlsConfig::Custom(config) => config.clone(),
+    };
     let (websocket, http_response) =
         connect_async_tls_with_config(request, None, false, Some(Connector::Rustls(config)))
             .await?;
     tracing::debug!("got http response: {http_response:?}");
     Ok(websocket)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{webpki_root_store, webpki_roots_tls_config};
+
+    #[test]
+    fn webpki_root_store_is_populated() {
+        assert!(!webpki_root_store().is_empty());
+    }
+
+    /// `ClientConfig::builder` panics if no process-level `CryptoProvider` is
+    /// installed, which depends on the rustls features this crate is built with.
+    #[test]
+    fn webpki_roots_config_builds() {
+        webpki_roots_tls_config();
+    }
 }
