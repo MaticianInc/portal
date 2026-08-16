@@ -336,8 +336,16 @@ impl DurableRouter {
     /// We will store a new host control websocket, and return its peer.
     /// Nothing more will happen until a client connects.
     async fn handle_host_control(&mut self, portal_id: String) -> worker::Result<Response> {
-        // Kill off any existing host control sockets.
-        self.close_tagged_websockets("hc", "replaced by new host");
+        // Reject the connection if a host is already connected.
+        // This prevents host displacement attacks where an attacker with a valid
+        // host JWT silently replaces the real robot's connection.
+        let existing_hc = self.state.get_websockets_with_tag("hc");
+        if !existing_hc.is_empty() {
+            console_log!(
+                "rejecting host connection: portal {portal_id} already has an active host"
+            );
+            return Response::error("host already connected", 409);
+        }
 
         let pair = WebSocketPair::new()?;
         let host_ws = pair.client;

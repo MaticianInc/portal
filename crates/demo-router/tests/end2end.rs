@@ -230,3 +230,23 @@ async fn end2end_io() {
     client_io.write_all(&[11, 22, 33]).await.unwrap();
     client_io.write_all(&[44, 55, 66]).await.unwrap();
 }
+
+#[tokio::test]
+#[tracing_test::traced_test]
+async fn host_displacement_rejected() {
+    let mut router = PortalRouter::new("secret");
+    let router_addr = router.bind().await;
+    let url = url_from_addr(router_addr);
+    tokio::spawn(router.serve());
+
+    let tokens = TokenMaker::new(b"secret");
+    let host_token = tokens.make_token(PortalId::from(1234), Role::Host, EXP_24H);
+    let service = matic_portal_client::PortalService::new(&url).unwrap();
+
+    // First host connects successfully.
+    let _host = service.tunnel_host(&host_token).await.unwrap();
+
+    // Second host with the same portal_id should be rejected with 409 Conflict.
+    let result = service.tunnel_host(&host_token).await;
+    expect_http_error(result, StatusCode::CONFLICT);
+}
