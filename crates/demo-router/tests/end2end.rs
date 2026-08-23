@@ -8,7 +8,7 @@ use demo_router::router::PortalRouter;
 use futures_util::{SinkExt, StreamExt};
 use jsonwebtoken::{EncodingKey, Header};
 use matic_portal_client::PortalError;
-use matic_portal_types::{JwtClaims, PortalId, Role};
+use matic_portal_types::{JwtClaims, PortalId, Role, PORTAL_JWT_AUDIENCE, PORTAL_JWT_ISSUER};
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 use tokio::sync::oneshot;
 use tokio_tungstenite::tungstenite::Error as WsError;
@@ -67,6 +67,8 @@ impl TokenMaker {
             exp: exp.as_jwt_seconds(),
             role,
             portal_id,
+            iss: Some(PORTAL_JWT_ISSUER.to_owned()),
+            aud: Some(PORTAL_JWT_AUDIENCE.to_owned()),
         };
 
         jsonwebtoken::encode(&Header::default(), &claims, &self.encoding_key).unwrap()

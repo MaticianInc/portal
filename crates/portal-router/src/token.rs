@@ -1,5 +1,5 @@
 use jwt_webcrypto::{Algorithm, Validator};
-use matic_portal_types::JwtClaims;
+use matic_portal_types::{JwtClaims, PORTAL_JWT_AUDIENCE, PORTAL_JWT_ISSUER};
 
 #[derive(Debug, Clone, Copy)]
 pub struct ValidationError;
@@ -26,6 +26,20 @@ impl TokenValidator {
             .map_err(|_| ValidationError)?;
 
         let claims: JwtClaims = serde_json::from_slice(&payload).map_err(|_| ValidationError)?;
+
+        // Reject tokens carrying an unexpected issuer or audience. Tokens
+        // without these fields are still accepted for backward compatibility.
+        if let Some(ref iss) = claims.iss {
+            if iss != PORTAL_JWT_ISSUER {
+                return Err(ValidationError);
+            }
+        }
+        if let Some(ref aud) = claims.aud {
+            if aud != PORTAL_JWT_AUDIENCE {
+                return Err(ValidationError);
+            }
+        }
+
         Ok(claims)
     }
 }

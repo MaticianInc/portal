@@ -5,7 +5,7 @@ mod message;
 mod nexus;
 mod portal_id;
 
-pub use auth::{JwtClaims, Role};
+pub use auth::{JwtClaims, Role, PORTAL_JWT_AUDIENCE, PORTAL_JWT_ISSUER};
 pub use message::ControlMessage;
 pub use nexus::{Nexus, NexusParseError};
 pub use portal_id::{PortalId, ServiceName};
