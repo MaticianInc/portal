@@ -1,4 +1,5 @@
 use std::net::{Ipv4Addr, SocketAddr, ToSocketAddrs};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use axum::extract::ws::{Message, WebSocket};
@@ -7,7 +8,7 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Extension;
 use axum::{routing::get, Router};
-use dashmap::DashMap;
+use dashmap::{mapref::entry::Entry, DashMap};
 use futures_util::StreamExt;
 use tokio::net::TcpListener;
 
@@ -21,7 +22,13 @@ struct WaitingTunnels {
     /// Host control sockets.
     hosts: DashMap<PortalId, IdleWebSocket>,
     /// Client data sockets.
-    clients: DashMap<(PortalId, Nexus), IdleWebSocket>,
+    clients: DashMap<(PortalId, Nexus), WaitingClient>,
+    next_client_generation: AtomicU64,
+}
+
+struct WaitingClient {
+    generation: u64,
+    websocket: IdleWebSocket,
 }
 
 impl WaitingTunnels {
@@ -61,24 +68,41 @@ impl WaitingTunnels {
     }
 
     fn insert_client_ws(self: Arc<Self>, portal_id: PortalId, nexus: Nexus, ws: WebSocket) {
+        let key = (portal_id, nexus);
+        let Entry::Vacant(entry) = self.clients.entry(key) else {
+            tracing::warn!("rejecting duplicate client nexus {nexus} for portal {portal_id}");
+            return;
+        };
+
         // For logging purposes we store a name with every idle socket.
         let name = portal_id.to_string();
+        let generation = self.next_client_generation.fetch_add(1, Ordering::Relaxed);
         let self_clone = self.clone();
         let cleanup = async move {
-            self_clone.take_host_ws(portal_id);
+            self_clone.remove_client_ws(portal_id, nexus, generation);
         };
         let idle_websocket = IdleWebSocket::new(ws, name, cleanup);
-
-        let key = (portal_id, nexus);
-        let previous = self.clients.insert(key, idle_websocket);
-        if previous.is_some() {
-            tracing::debug!("displaced a connected host");
-        }
+        entry.insert(WaitingClient {
+            generation,
+            websocket: idle_websocket,
+        });
     }
 
     fn take_client_ws(&self, portal_id: PortalId, nexus: Nexus) -> Option<IdleWebSocket> {
         let key = (portal_id, nexus);
-        self.clients.remove(&key).map(|(_, ws)| ws)
+        self.clients
+            .remove(&key)
+            .map(|(_, client)| client.websocket)
+    }
+
+    fn remove_client_ws(&self, portal_id: PortalId, nexus: Nexus, generation: u64) {
+        let key = (portal_id, nexus);
+        let Entry::Occupied(entry) = self.clients.entry(key) else {
+            return;
+        };
+        if entry.get().generation == generation {
+            entry.remove();
+        }
     }
 }
 
