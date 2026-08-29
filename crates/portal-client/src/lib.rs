@@ -255,7 +255,13 @@ impl PortalService {
         // A client must wait for a Connected message before it is allowed to transmit.
         // FIXME: add a built-in timeout here, so that naive callers won't wait forever.
         // FIXME: break out "wait for control message" into a separate function.
-        while let Some(Ok(message)) = ws.next().await {
+        loop {
+            let message = match ws.next().await {
+                Some(Ok(message)) => message,
+                Some(Err(error)) => return Err(PortalError::Websocket(error)),
+                None => return Err(PortalError::Protocol),
+            };
+
             match message {
                 Message::Text(txt_msg) => {
                     let Ok(control_message) = serde_json::from_str::<ControlMessage>(&txt_msg)
@@ -283,8 +289,6 @@ impl PortalService {
                 }
             }
         }
-
-        Ok(TunnelSocket { ws })
     }
 }
 
@@ -525,7 +529,10 @@ async fn websocket_connect(
 
 #[cfg(test)]
 mod tests {
-    use super::{webpki_root_store, webpki_roots_tls_config};
+    use super::{webpki_root_store, webpki_roots_tls_config, PortalError, PortalService};
+    use futures_util::StreamExt as _;
+    use tokio::io::AsyncWriteExt;
+    use tokio::net::TcpListener;
 
     #[test]
     fn webpki_root_store_is_populated() {
@@ -537,5 +544,44 @@ mod tests {
     #[test]
     fn webpki_roots_config_builds() {
         webpki_roots_tls_config();
+    }
+
+    #[tokio::test]
+    async fn client_rejects_close_before_connected() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut websocket = tokio_tungstenite::accept_async(stream).await.unwrap();
+            websocket.close(None).await.unwrap();
+            while websocket.next().await.is_some() {}
+        });
+
+        let service =
+            PortalService::new_with_tls(&format!("ws://{address}"), webpki_roots_tls_config())
+                .unwrap();
+        let result = service.tunnel_client("unused", "test-service").await;
+
+        assert!(matches!(result, Err(PortalError::Protocol)));
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn client_propagates_websocket_error_before_connected() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut websocket = tokio_tungstenite::accept_async(stream).await.unwrap();
+            websocket.get_mut().write_all(&[0x83, 0x00]).await.unwrap();
+        });
+
+        let service =
+            PortalService::new_with_tls(&format!("ws://{address}"), webpki_roots_tls_config())
+                .unwrap();
+        let result = service.tunnel_client("unused", "test-service").await;
+
+        assert!(matches!(result, Err(PortalError::Websocket(_))));
+        server.await.unwrap();
     }
 }
