@@ -10,7 +10,7 @@ use jsonwebtoken::{EncodingKey, Header};
 use matic_portal_client::PortalError;
 use matic_portal_types::{JwtClaims, PortalId, Role};
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
-use tokio::sync::oneshot;
+use tokio::sync::{mpsc, oneshot};
 use tokio_tungstenite::tungstenite::Error as WsError;
 
 enum Expiration {
@@ -229,4 +229,44 @@ async fn end2end_io() {
 
     client_io.write_all(&[11, 22, 33]).await.unwrap();
     client_io.write_all(&[44, 55, 66]).await.unwrap();
+}
+
+#[tokio::test]
+#[tracing_test::traced_test]
+async fn host_accepts_multiple_sequential_clients() {
+    let mut router = PortalRouter::new("secret");
+    let router_addr = router.bind().await;
+    let url = url_from_addr(router_addr);
+    tokio::spawn(router.serve());
+
+    let tokens = TokenMaker::new(b"secret");
+    let host_token = tokens.make_token(PortalId::from(1234), Role::Host, EXP_24H);
+    let client_token = tokens.make_token(PortalId::from(1234), Role::Client, EXP_24H);
+    let service = Arc::new(matic_portal_client::PortalService::new(&url).unwrap());
+    let host_service = service.clone();
+
+    let (host_ready_tx, host_ready_rx) = oneshot::channel();
+    let (accepted_tx, mut accepted_rx) = mpsc::channel(2);
+    let host_task = tokio::spawn(async move {
+        let mut host = host_service.tunnel_host(&host_token).await.unwrap();
+        host_ready_tx.send(()).unwrap();
+
+        for _ in 0..2 {
+            let incoming = host.next_client().await.unwrap();
+            let _socket = incoming.connect(&host_token).await.unwrap();
+            accepted_tx.send(()).await.unwrap();
+        }
+    });
+
+    host_ready_rx.await.unwrap();
+
+    for _ in 0..2 {
+        let _client = service
+            .tunnel_client(&client_token, "test-service")
+            .await
+            .unwrap();
+        accepted_rx.recv().await.unwrap();
+    }
+
+    host_task.await.unwrap();
 }
