@@ -348,8 +348,8 @@ impl DurableRouter {
             socket_tag: SocketTag::HostControl,
         };
         let tags = socket_info.to_tags();
-        self.state
-            .accept_websocket_with_tags(&server_ws, tags.each_ref().map(String::as_str).as_slice());
+        let tag_refs = [tags[0].as_str(), tags[1].as_str()];
+        self.state.accept_websocket_with_tags(&server_ws, &tag_refs);
 
         if let Err(e) = Self::send_message(
             &server_ws,
@@ -391,10 +391,8 @@ impl DurableRouter {
             socket_tag: host_tag,
         };
         let tags = socket_info.to_tags();
-        self.state.accept_websocket_with_tags(
-            &server_ws,
-            &tags.each_ref().map(String::as_str).as_slice(),
-        );
+        let tag_refs = [tags[0].as_str(), tags[1].as_str()];
+        self.state.accept_websocket_with_tags(&server_ws, &tag_refs);
 
         // Inform the client that the connection is established, so it
         // knows that data transfer can begin.
@@ -434,10 +432,8 @@ impl DurableRouter {
             socket_tag: SocketTag::ClientData(nexus),
         };
         let tags = socket_info.to_tags();
-        self.state.accept_websocket_with_tags(
-            &server_ws,
-            &tags.each_ref().map(String::as_str).as_slice(),
-        );
+        let tag_refs = [tags[0].as_str(), tags[1].as_str()];
+        self.state.accept_websocket_with_tags(&server_ws, &tag_refs);
 
         // Loop over all host sockets until a send is successful.
         // Since the websocket's ready_state is not accessible to us, this ensures we send over an open socket if available.

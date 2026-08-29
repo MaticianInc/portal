@@ -20,11 +20,12 @@ jobs:
 
       - name: Run cargo check
         working-directory: crates
-        run: cargo check --all-targets --all-features
+        run: cargo check --workspace --all-targets --all-features
 
   test:
     name: cargo test
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
@@ -32,9 +33,25 @@ jobs:
       - name: Install stable toolchain
         uses: dtolnay/rust-toolchain@1.76.0
 
-      - name: Run cargo test --all-features
+      - name: Run cargo test
         working-directory: crates
-        run: cargo test
+        run: cargo test --workspace --all-features
+
+  wasm:
+    name: wasm check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@1.76.0
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Check the deployed workspace
+        working-directory: crates
+        run: cargo check -p portal-router -p jwt-webcrypto --target wasm32-unknown-unknown --all-targets --all-features
 
   fmt:
     name: cargo fmt
@@ -66,4 +83,4 @@ jobs:
 
       - name: Run cargo clippy
         working-directory: crates
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
