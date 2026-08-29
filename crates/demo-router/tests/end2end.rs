@@ -164,7 +164,7 @@ async fn end2end() {
 
     let (host_ready_tx, host_ready_rx) = oneshot::channel();
 
-    tokio::spawn(async move {
+    let host_task = tokio::spawn(async move {
         let host_token = tokens.make_token(PortalId::from(1234), Role::Host, EXP_24H);
         let mut host = service2.tunnel_host(&host_token).await.unwrap();
         host_ready_tx.send(()).unwrap();
@@ -185,6 +185,10 @@ async fn end2end() {
         .send(Bytes::from([11, 22, 33].as_ref()))
         .await
         .unwrap();
+    tokio::time::timeout(Duration::from_secs(10), host_task)
+        .await
+        .unwrap()
+        .unwrap();
 }
 
 #[tokio::test]
@@ -202,7 +206,7 @@ async fn end2end_io() {
 
     let (host_ready_tx, host_ready_rx) = oneshot::channel();
 
-    tokio::spawn(async move {
+    let host_task = tokio::spawn(async move {
         let host_token = tokens.make_token(PortalId::from(1234), Role::Host, EXP_24H);
         let mut host = service2.tunnel_host(&host_token).await.unwrap();
         host_ready_tx.send(()).unwrap();
@@ -229,4 +233,8 @@ async fn end2end_io() {
 
     client_io.write_all(&[11, 22, 33]).await.unwrap();
     client_io.write_all(&[44, 55, 66]).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(10), host_task)
+        .await
+        .unwrap()
+        .unwrap();
 }
